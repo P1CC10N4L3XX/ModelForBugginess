@@ -1,4 +1,4 @@
-package controller;
+package client;
 
 import exceptions.CommitOfReleaseNotFoundException;
 import exceptions.FirstCommitOfProjectNotFoundException;
@@ -11,51 +11,44 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.*;
-import java.util.stream.Stream;
 
 import static utils.CommandRunner.runCommand;
 
 public class GitManager {
 
+    private GitManager(){}
+
+    private static final String localRepoPath = ConfigManager.getInstance().getProperty("localRepoPath");
+    private static final String isoStrictFormat = "iso-strict";
 
     public static void cloneRepo() throws IOException, InterruptedException{
-        String localRepoPath = ConfigManager.getInstance().getProperty("localRepoPath");
         String githubRepoUrl = ConfigManager.getInstance().getProperty("GithubRepoUrl");
         File repoDir = new File(localRepoPath);
         if(!repoDir.exists()){
             System.out.println("Cloning repository...");
             runCommand(".", "git", "clone", githubRepoUrl, localRepoPath);
-        }else {
-            System.out.println("Repository already existing, skipping clone.");
         }
     }
 
     public static int getLocAtCommit(String classPath, Commit commit) throws IOException, InterruptedException {
-        String repoPath = ConfigManager.getInstance().getProperty("localRepoPath");
+
         ProcessBuilder processBuilder = new ProcessBuilder(
                 "git",
                 "show",
                 commit.getHash()+":"+classPath
         );
 
-        processBuilder.directory(new File(repoPath));
+        processBuilder.directory(new File(localRepoPath));
 
         Process process = processBuilder.start();
 
         int loc=0;
 
         try(BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(process.getInputStream()))){
-            String line;
-            while ((line = bufferedReader.readLine() )!= null){
-                if(line.startsWith("fatal")){
-                    System.out.println("git show error per " + classPath + ": " + line);
-                }
+            while ((bufferedReader.readLine() )!= null){
                 loc++;
             }
         }
@@ -66,7 +59,6 @@ public class GitManager {
     }
 
     public static List<String> getJavaFilesPerCommit(Commit commit) throws IOException, InterruptedException{
-        String repoPath = ConfigManager.getInstance().getProperty("localRepoPath");
 
         ProcessBuilder pb = new ProcessBuilder(
                 "git",
@@ -75,7 +67,7 @@ public class GitManager {
                 "--name-only",
                 commit.getHash()
         );
-        pb.directory(new File(repoPath));
+        pb.directory(new File(localRepoPath));
 
         Process process = pb.start();
 
@@ -96,18 +88,17 @@ public class GitManager {
     }
 
     public static Commit getFirstCommitOfProject() throws FirstCommitOfProjectNotFoundException,IOException, InterruptedException{
-        String repoPath = ConfigManager.getInstance().getProperty("localRepoPath");
 
         ProcessBuilder processBuilder = new ProcessBuilder(
           "git",
           "rev-list",
           "--reverse",
           "--pretty=format:%H|%an|%ad|%s",
-          "--date=iso-strict",
+          "--date="+isoStrictFormat,
           "HEAD"
         );
 
-        processBuilder.directory(new File(repoPath));
+        processBuilder.directory(new File(localRepoPath));
 
         Process process = processBuilder.start();
 
@@ -140,7 +131,6 @@ public class GitManager {
     }
 
     public static Commit getLastCommitOfRelease(ProjectRelease release) throws CommitOfReleaseNotFoundException,IOException, InterruptedException {
-        String repoPath = ConfigManager.getInstance().getProperty("localRepoPath");
 
         String gitDate = release.getReleaseDate().toString().replace("T"," ");
 
@@ -151,11 +141,11 @@ public class GitManager {
                 "1",
                 "--before="+gitDate,
                 "--pretty=format:%H|%an|%ad|%s",
-                "--date=iso-strict",
+                "--date="+isoStrictFormat,
                 "HEAD"
         );
 
-        processBuilder.directory(new File(repoPath));
+        processBuilder.directory(new File(localRepoPath));
 
         Process process = processBuilder.start();
 
@@ -178,7 +168,6 @@ public class GitManager {
     }
 
     public static List<GitFileChange> getFileHistory(String classPath, Commit commitPrevRelease, Commit commitActualRelease) throws IOException, InterruptedException {
-        String repoPath = ConfigManager.getInstance().getProperty("localRepoPath");
 
         ProcessBuilder processBuilder = new ProcessBuilder(
                 "git",
@@ -186,12 +175,12 @@ public class GitManager {
                 commitPrevRelease.getHash()+".."+commitActualRelease.getHash(),
                 "--numstat",
                 "--format=%H|%an|%ad",
-                "--date=iso-strict",
+                "--date="+isoStrictFormat,
                 "--",
                 classPath
         );
 
-        processBuilder.directory(new File(repoPath));
+        processBuilder.directory(new File(localRepoPath));
 
         Process process = processBuilder.start();
 

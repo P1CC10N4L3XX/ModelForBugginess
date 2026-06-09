@@ -2,7 +2,7 @@ package org.ModelForBugginess;
 
 import controller.GetReleaseInfo;
 import controller.GetTicketInfo;
-import controller.GitManager;
+import client.GitManager;
 import controller.MetricsCalculator;
 import exceptions.CommitOfReleaseNotFoundException;
 import exceptions.FirstCommitOfProjectNotFoundException;
@@ -11,7 +11,6 @@ import models.Commit;
 import models.ProjectRelease;
 import models.TicketBugRecord;
 
-import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;

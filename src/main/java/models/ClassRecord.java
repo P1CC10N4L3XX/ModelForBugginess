@@ -25,49 +25,6 @@ public class ClassRecord {
 
     public ClassRecord(){}
 
-    public ClassRecord(String release,
-                       String className,
-                       int smells,
-                       int smellsDensity,
-                       int loc,
-                       int numberRevision,
-                       int numberDefectedVersion,
-                       int numberAuthors,
-                       int locAuthors,
-                       int maxOverRevisionLOCAdded,
-                       double averageLOCAddedPerRevision,
-                       int churn,
-                       int maxChurn,
-                       double averageChurn,
-                       int changeSetSize,
-                       int maxChangeSet,
-                       double averageChangeSet,
-                       int age,
-                       int weightedAge,
-                       boolean buggy
-                        ){
-        this.release = release;
-        this.className = className;
-        this.smells = smells;
-        this.smellsDensity = smellsDensity;
-        this.loc = loc;
-        this.numberRevision = numberRevision;
-        this.numberDefectedVersion = numberDefectedVersion;
-        this.numberAuthors = numberAuthors;
-        this.locAuthors = locAuthors;
-        this.maxOverRevisionLOCAdded = maxOverRevisionLOCAdded;
-        this.churn = churn;
-        this.maxChurn = maxChurn;
-        this.averageChurn = averageChurn;
-        this.changeSetSize = changeSetSize;
-        this.maxChangeSet = maxChangeSet;
-        this.averageChangeSet = averageChangeSet;
-        this.age = age;
-        this.weightedAge = weightedAge;
-        this.averageLOCAddedPerRevision = averageLOCAddedPerRevision;
-        this.buggy = buggy;
-    }
-
     public String getRelease() {
         return release;
     }

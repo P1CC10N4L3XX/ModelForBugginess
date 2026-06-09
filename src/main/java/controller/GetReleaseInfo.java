@@ -17,6 +17,8 @@ import java.util.List;
 
 public class GetReleaseInfo {
 
+    private GetReleaseInfo(){}
+
     private static final String projName = "SYNCOPE";
 
     public static List<ProjectRelease> run() {

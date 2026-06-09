@@ -1,14 +1,19 @@
 package controller;
 
+import client.GitManager;
 import models.ClassRecord;
 import models.Commit;
 import models.GitFileChange;
 
+import java.io.IOException;
 import java.util.*;
 
 
 public class MetricsCalculator {
-    public static ClassRecord calculateMetrics(String classPath, Commit commitPrevRelease, Commit commitActualRelease) throws Exception{
+
+    private MetricsCalculator(){}
+
+    public static ClassRecord calculateMetrics(String classPath, Commit commitPrevRelease, Commit commitActualRelease) throws IOException, InterruptedException {
         List<GitFileChange> history = GitManager.getFileHistory(classPath, commitPrevRelease, commitActualRelease);
 
         ClassRecord classRecord = new ClassRecord();

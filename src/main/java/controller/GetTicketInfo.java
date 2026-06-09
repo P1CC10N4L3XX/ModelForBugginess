@@ -20,6 +20,8 @@ public class GetTicketInfo {
 
     private static final String projName = "SYNCOPE";
 
+    private GetTicketInfo(){}
+
     public static List<TicketBugRecord> run() {
         List<TicketBugRecord> tickets = new ArrayList<>();
         int j = 0;
