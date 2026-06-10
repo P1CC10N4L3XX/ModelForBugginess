@@ -1,6 +1,7 @@
 package controller;
 
 import client.GitManager;
+import client.PMDManager;
 import models.ClassRecord;
 import models.Commit;
 import models.GitFileChange;
@@ -59,6 +60,14 @@ public class MetricsCalculator {
 
         int loc = GitManager.getLocAtCommit(classPath, commitActualRelease);
         locAuthors = revisions == 0 ? 0 : loc/ authors.size();
+
+        String classContent = GitManager.getFileContentAtCommit(classPath, commitActualRelease);
+
+        int smells = PMDManager.getNSmells(classPath, classContent);
+        double smellsDensity = loc > 0 ? (double) smells / loc : 0;
+
+        classRecord.setSmells(smells);
+        classRecord.setSmellsDensity(smellsDensity);
 
         int changeSetSize = changeSetPerCommit.size();
         int maxChangeSet = changeSetPerCommit.values()

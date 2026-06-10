@@ -5,7 +5,7 @@ public class ClassRecord {
     private String release;
     private String className;
     private int smells;
-    private int smellsDensity;
+    private double smellsDensity;
     private int loc;
     private int numberRevision;
     private int numberDefectedVersion;
@@ -49,11 +49,11 @@ public class ClassRecord {
         this.smells = smells;
     }
 
-    public int getSmellsDensity() {
+    public double getSmellsDensity() {
         return smellsDensity;
     }
 
-    public void setSmellsDensity(int smellsDensity) {
+    public void setSmellsDensity(double smellsDensity) {
         this.smellsDensity = smellsDensity;
     }
 

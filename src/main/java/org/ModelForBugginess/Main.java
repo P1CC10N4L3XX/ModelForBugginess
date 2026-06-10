@@ -14,7 +14,13 @@ import models.TicketBugRecord;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 public class Main {
     private static final String METRICS_FILE = "Syncope_classes_metrics.csv";
@@ -47,28 +53,65 @@ public class Main {
         List<ProjectRelease> releasesToProcess = releases.subList(0, limit);
         GitManager.cloneRepo();
 
+        int nThreads = Runtime.getRuntime().availableProcessors();
+        ExecutorService executorService = Executors.newFixedThreadPool(nThreads);
+
         for(int i = 0; i<releasesToProcess.size(); i++){
-            printProgress(i,releasesToProcess.size());
+            final int index = i;
+
             try {
                 Commit commitActualRelease = GitManager.getLastCommitOfRelease(releasesToProcess.get(i));
                 Commit commitPrevRelease = i > 0 ? GitManager.getLastCommitOfRelease(releasesToProcess.get(i-1)) : GitManager.getFirstCommitOfProject();
                 List<String> javaClassPaths = GitManager.getJavaFilesPerCommit(commitActualRelease);
+                List<ClassRecord> classRecords = Collections.synchronizedList(new ArrayList<>());
+                List<Future<?>> futures = new ArrayList<>();
+
+                final Commit finalCommitActual = commitActualRelease;
+                final Commit finalCommitPrev = commitPrevRelease;
+
                 for(String javaClassPath: javaClassPaths){
-                    try {
+                    Future<?> future = executorService.submit(()->{
+                        try{
+                            ClassRecord classRecord = MetricsCalculator.calculateMetrics(javaClassPath, finalCommitPrev, finalCommitActual);
+                            classRecord.setClassName(javaClassPath);
+                            classRecord.setRelease(releasesToProcess.get(index).getName());
+                            classRecords.add(classRecord);
+                        } catch (Exception e){
+                            System.out.println("Errore su "+javaClassPath+":"+e.getMessage());
+                        }
+                    });
+
+                    futures.add(future);
+                    /*try {
                         ClassRecord classRecord = MetricsCalculator.calculateMetrics(javaClassPath, commitPrevRelease, commitActualRelease);
                         classRecord.setClassName(javaClassPath);
                         classRecord.setRelease(releasesToProcess.get(i).getName());
                         writeClassRecordToCSV(classRecord);
+
+
                     }catch (Exception e){
                         System.out.println(e.getMessage());
+                    }*/
+                }
+                for (Future<?> future : futures){
+                    try {
+                        future.get();
+                    } catch (Exception e){
+                        System.out.println("Thread error: " + e.getMessage());
                     }
                 }
+
+                classRecords.stream()
+                        .sorted(Comparator.comparing(ClassRecord :: getClassName))
+                        .forEach(Main::writeClassRecordToCSV);
+                printProgress(index,releasesToProcess.size());
             } catch (CommitOfReleaseNotFoundException | FirstCommitOfProjectNotFoundException e) {
                 System.out.println(e.getMessage());
             }
 
-
         }
+
+        executorService.shutdown();
 
     }
 

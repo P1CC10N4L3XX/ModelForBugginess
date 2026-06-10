@@ -33,6 +33,23 @@ public class GitManager {
         }
     }
 
+    public static String getFileContentAtCommit(String classPath, Commit commit) throws IOException, InterruptedException{
+        ProcessBuilder processBuilder = new ProcessBuilder(
+          "git",
+          "show",
+          commit.getHash() + ":" + classPath
+        );
+
+        processBuilder.directory(new File(localRepoPath));
+
+        Process process = processBuilder.start();
+
+        String content = new String(process.getInputStream().readAllBytes());
+        process.waitFor();
+        return content;
+
+    }
+
     public static int getLocAtCommit(String classPath, Commit commit) throws IOException, InterruptedException {
 
         ProcessBuilder processBuilder = new ProcessBuilder(
