@@ -49,6 +49,12 @@ public class Main {
         List<ProjectRelease> releasesToProcess = releases.subList(0, limit);
         GitManager.cloneRepo();
 
+        for (ProjectRelease release : releasesToProcess){
+            System.out.println(release.getName());
+        }
+
+        Map<Integer, List<String>> buggyMap = SZZ.computeBuggyClasses(releases, tickets);
+
 
         for(int i = 0; i<releasesToProcess.size(); i++){
             printProgress(i, releasesToProcess.size());
@@ -60,7 +66,7 @@ public class Main {
                 Map<String, List<GitFileChange>> historyMap = GitManager.getAllFileHistory(commitPrevRelease, commitActualRelease);
                 Map<String, Integer> locMap = GitManager.getAllLocAtCommit(javaClassPaths,commitActualRelease);
                 Map<String, String> contentMap = GitManager.getAllFileContentAtCommit(commitActualRelease);
-                Map<Integer, List<String>> buggyMap = SZZ.computeBuggyClasses(releases, tickets);
+                Map<String, Integer> smellsMap = PMDManager.getAllSmells(contentMap);
 
 
                 for(String classPath : javaClassPaths){
@@ -70,11 +76,14 @@ public class Main {
 
                         ClassRecord classRecord = MetricsCalculator.calculateMetrics(classPath, history, loc, commitActualRelease);
                         classRecord.setRelease(releasesToProcess.get(i).getName());
-                        int nSmells = PMDManager.getNSmells(classPath, contentMap.get(classPath));
+
+                        int nSmells = smellsMap.getOrDefault(classPath, 0);
                         classRecord.setSmells(nSmells);
                         classRecord.setSmellsDensity(loc == 0 ? 0 : (double)nSmells/loc);
+
                         List<String> buggyClasses = buggyMap.getOrDefault(i, List.of());
                         classRecord.setBuggy(buggyClasses.contains(classPath));
+
                         writeClassRecordToCSV(classRecord);
                     }catch (Exception e){
                         e.printStackTrace();
@@ -83,9 +92,9 @@ public class Main {
             } catch (CommitOfReleaseNotFoundException | FirstCommitOfProjectNotFoundException e) {
                 System.out.println(e.getMessage());
             }
-            System.out.println("Done! Results saved to "+METRICS_FILE);
 
         }
+        System.out.println("Done! Results saved to "+METRICS_FILE);
 
     }
 
