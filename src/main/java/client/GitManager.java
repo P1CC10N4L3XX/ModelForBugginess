@@ -5,6 +5,8 @@ import exceptions.FirstCommitOfProjectNotFoundException;
 import models.Commit;
 import models.GitFileChange;
 import models.ProjectRelease;
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import utils.ConfigManager;
 
 import java.io.BufferedReader;
@@ -31,6 +33,39 @@ public class GitManager {
             System.out.println("Cloning repository...");
             runCommand(".", "git", "clone", githubRepoUrl, localRepoPath);
         }
+    }
+
+    public static Map<String, String> getAllFileContentAtCommit(Commit commit) throws IOException, InterruptedException{
+
+        Map<String, String> contentMap = new HashMap<>();
+
+
+
+        ProcessBuilder processBuilder = new ProcessBuilder(
+                "git",
+                "archive",
+                commit.getHash(),
+                "--format=tar"
+        );
+
+        processBuilder.directory(new File(localRepoPath));
+        Process process = processBuilder.start();
+
+        try (TarArchiveInputStream tarStream = new TarArchiveInputStream(process.getInputStream())){
+            TarArchiveEntry entry;
+            while((entry = tarStream.getNextEntry()) != null){
+                String name = entry.getName();
+                if(!name.endsWith(".java")) continue;
+                byte[] bytes = tarStream.readAllBytes();
+                String content = new String(bytes);
+                contentMap.put(name, content);
+            }
+        }
+
+        process.waitFor();
+        return contentMap;
+
+
     }
 
     public static String getFileContentAtCommit(String classPath, Commit commit) throws IOException, InterruptedException{
@@ -184,61 +219,77 @@ public class GitManager {
         return new Commit(hash,author,commitDate,message);
     }
 
-    public static List<GitFileChange> getFileHistory(String classPath, Commit commitPrevRelease, Commit commitActualRelease) throws IOException, InterruptedException {
+
+    public static Map<String, Integer> getAllLocAtCommit(List<String> classPaths,Commit commit) throws IOException, InterruptedException{
+        Map<String,Integer> locMap = new HashMap<>();
+
+        for(String classPath: classPaths){
+            ProcessBuilder processBuilder = new ProcessBuilder(
+                    "git",
+                    "show",
+                    commit.getHash() + ":" + classPath
+            );
+            processBuilder.directory(new File(localRepoPath));
+
+            Process process = processBuilder.start();
+
+            long loc = new BufferedReader(new InputStreamReader(process.getInputStream())).lines().count();
+
+            locMap.put(classPath,(int)loc);
+        }
+
+        return locMap;
+    }
+
+    public static Map<String, List<GitFileChange>> getAllFileHistory(Commit commitPrevRelease, Commit commitActualRelease) throws IOException, InterruptedException{
+        Map<String, List<GitFileChange>> historyMap = new HashMap<>();
 
         ProcessBuilder processBuilder = new ProcessBuilder(
                 "git",
                 "log",
-                commitPrevRelease.getHash()+".."+commitActualRelease.getHash(),
+                commitPrevRelease.getHash() + ".." + commitActualRelease.getHash(),
                 "--numstat",
                 "--format=%H|%an|%ad",
-                "--date="+isoStrictFormat,
-                "--",
-                classPath
+                "--date="+isoStrictFormat
         );
-
         processBuilder.directory(new File(localRepoPath));
-
         Process process = processBuilder.start();
 
-        BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+        try(BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(process.getInputStream()))){
+            String line;
+            String currentHash = null;
+            String currenAuthor = null;
+            LocalDateTime currentDate = null;
 
-        List<GitFileChange> changes = new ArrayList<>();
+            while ((line = bufferedReader.readLine()) != null){
+                line = line.trim();
+                if(line.contains("|")){
+                    String[] parts = line.split("\\|");
+                    currentHash = parts[0];
+                    currenAuthor = parts[1];
+                    currentDate = OffsetDateTime.parse(parts[2].trim()).toLocalDateTime();
+                }else if (line.matches("\\d+\\s+\\d+\\s+.*")){
+                    String[] parts = line.split("\\s+",3);
+                    String filePath = parts[2].trim();
+                    if(!filePath.endsWith(".java")) continue;
 
-        String line;
+                    GitFileChange gitFileChange = new GitFileChange(
+                            new Commit(currentHash, currenAuthor, currentDate, null),
+                            parse(parts[0]),
+                            parse(parts[1])
+                    );
 
-        String currentCommit = null;
-        String currentAuthor = null;
-        LocalDateTime currentDate = null;
-
-        while((line=bufferedReader.readLine()) != null){
-            line = line.trim();
-
-            if(line.contains("|")){
-                String[] parts = line.split("\\|");
-                currentCommit = parts[0];
-                currentAuthor = parts[1];
-                currentDate = OffsetDateTime.parse(parts[2]).toLocalDateTime();
-            }else if(line.matches("\\d+\\s+\\d+\\s+.*")){
-                String[] parts = line.split("\\s+");
-
-                GitFileChange change = new GitFileChange(
-                        new Commit(currentCommit,currentAuthor,currentDate,null),
-                        parse(parts[0]),
-                        parse(parts[1])
-
-                );
-
-                changes.add(change);
+                    historyMap.computeIfAbsent(filePath, k -> new ArrayList<>()).add(gitFileChange);
+                }
             }
         }
-
         process.waitFor();
-
-        return changes;
-
-
+        return historyMap;
     }
+
+
+
+
 
     private static int parse(String s){
         try{

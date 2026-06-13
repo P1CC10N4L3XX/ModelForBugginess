@@ -20,7 +20,7 @@ public class ClassRecord {
     private int maxChangeSet;
     private double averageChangeSet;
     private int age;
-    private int weightedAge;
+    private double weightedAge;
     private boolean buggy;
 
     public ClassRecord(){}
@@ -169,11 +169,11 @@ public class ClassRecord {
         this.age = age;
     }
 
-    public int getWeightedAge() {
+    public double getWeightedAge() {
         return weightedAge;
     }
 
-    public void setWeightedAge(int weightedAge) {
+    public void setWeightedAge(double weightedAge) {
         this.weightedAge = weightedAge;
     }
 

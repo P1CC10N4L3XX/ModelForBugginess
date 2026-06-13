@@ -1,26 +1,21 @@
 package org.ModelForBugginess;
 
+import client.PMDManager;
 import controller.GetReleaseInfo;
 import controller.GetTicketInfo;
 import client.GitManager;
 import controller.MetricsCalculator;
 import exceptions.CommitOfReleaseNotFoundException;
 import exceptions.FirstCommitOfProjectNotFoundException;
-import models.ClassRecord;
-import models.Commit;
-import models.ProjectRelease;
-import models.TicketBugRecord;
+import models.*;
 
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.util.ArrayList;
+
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.Map;
 
 public class Main {
     private static final String METRICS_FILE = "Syncope_classes_metrics.csv";
@@ -53,65 +48,39 @@ public class Main {
         List<ProjectRelease> releasesToProcess = releases.subList(0, limit);
         GitManager.cloneRepo();
 
-        int nThreads = Runtime.getRuntime().availableProcessors();
-        ExecutorService executorService = Executors.newFixedThreadPool(nThreads);
 
         for(int i = 0; i<releasesToProcess.size(); i++){
-            final int index = i;
+            printProgress(i, releasesToProcess.size());
 
             try {
                 Commit commitActualRelease = GitManager.getLastCommitOfRelease(releasesToProcess.get(i));
                 Commit commitPrevRelease = i > 0 ? GitManager.getLastCommitOfRelease(releasesToProcess.get(i-1)) : GitManager.getFirstCommitOfProject();
                 List<String> javaClassPaths = GitManager.getJavaFilesPerCommit(commitActualRelease);
-                List<ClassRecord> classRecords = Collections.synchronizedList(new ArrayList<>());
-                List<Future<?>> futures = new ArrayList<>();
+                Map<String, List<GitFileChange>> historyMap = GitManager.getAllFileHistory(commitPrevRelease, commitActualRelease);
+                Map<String, Integer> locMap = GitManager.getAllLocAtCommit(javaClassPaths,commitActualRelease);
+                Map<String, String> contentMap = GitManager.getAllFileContentAtCommit(commitActualRelease);
 
-                final Commit finalCommitActual = commitActualRelease;
-                final Commit finalCommitPrev = commitPrevRelease;
-
-                for(String javaClassPath: javaClassPaths){
-                    Future<?> future = executorService.submit(()->{
-                        try{
-                            ClassRecord classRecord = MetricsCalculator.calculateMetrics(javaClassPath, finalCommitPrev, finalCommitActual);
-                            classRecord.setClassName(javaClassPath);
-                            classRecord.setRelease(releasesToProcess.get(index).getName());
-                            classRecords.add(classRecord);
-                        } catch (Exception e){
-                            System.out.println("Errore su "+javaClassPath+":"+e.getMessage());
-                        }
-                    });
-
-                    futures.add(future);
-                    /*try {
-                        ClassRecord classRecord = MetricsCalculator.calculateMetrics(javaClassPath, commitPrevRelease, commitActualRelease);
-                        classRecord.setClassName(javaClassPath);
-                        classRecord.setRelease(releasesToProcess.get(i).getName());
-                        writeClassRecordToCSV(classRecord);
-
-
-                    }catch (Exception e){
-                        System.out.println(e.getMessage());
-                    }*/
-                }
-                for (Future<?> future : futures){
+                for(String classPath : javaClassPaths){
                     try {
-                        future.get();
-                    } catch (Exception e){
-                        System.out.println("Thread error: " + e.getMessage());
+                        List<GitFileChange> history = historyMap.getOrDefault(classPath, Collections.emptyList());
+                        int loc = locMap.getOrDefault(classPath, 0);
+
+                        ClassRecord classRecord = MetricsCalculator.calculateMetrics(classPath, history, loc, commitActualRelease);
+                        classRecord.setRelease(releasesToProcess.get(i).getName());
+                        int nSmells = PMDManager.getNSmells(classPath, contentMap.get(classPath));
+                        classRecord.setSmells(nSmells);
+                        classRecord.setSmellsDensity(loc == 0 ? 0 : (double)nSmells/loc);
+                        writeClassRecordToCSV(classRecord);
+                    }catch (Exception e){
+                        e.printStackTrace();
                     }
                 }
-
-                classRecords.stream()
-                        .sorted(Comparator.comparing(ClassRecord :: getClassName))
-                        .forEach(Main::writeClassRecordToCSV);
-                printProgress(index,releasesToProcess.size());
             } catch (CommitOfReleaseNotFoundException | FirstCommitOfProjectNotFoundException e) {
                 System.out.println(e.getMessage());
             }
+            System.out.println("Done! Results saved to "+METRICS_FILE);
 
         }
-
-        executorService.shutdown();
 
     }
 

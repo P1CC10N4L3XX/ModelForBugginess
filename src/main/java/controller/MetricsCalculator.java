@@ -1,12 +1,11 @@
 package controller;
 
-import client.GitManager;
-import client.PMDManager;
 import models.ClassRecord;
 import models.Commit;
 import models.GitFileChange;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.*;
 
 
@@ -14,89 +13,83 @@ public class MetricsCalculator {
 
     private MetricsCalculator(){}
 
-    public static ClassRecord calculateMetrics(String classPath, Commit commitPrevRelease, Commit commitActualRelease) throws IOException, InterruptedException {
-        List<GitFileChange> history = GitManager.getFileHistory(classPath, commitPrevRelease, commitActualRelease);
-
+    public static ClassRecord calculateMetrics(String classPath, List<GitFileChange> history, int loc, Commit lastCommitActualRelease) throws IOException, InterruptedException {
         ClassRecord classRecord = new ClassRecord();
+        classRecord.setLoc(loc);
 
         Set<String> authors = new HashSet<>();
         Set<String> commits = new HashSet<>();
-
-        Map<String, Integer> revisionsLOCAdded = new HashMap<>();
+        Map<String, Integer> locAddedPerCommit = new HashMap<>();
         Map<String, Integer> changeSetPerCommit = new HashMap<>();
 
         int churn = 0;
         int maxChurn = 0;
-
         int totalAdded = 0;
         int maxAdded = 0;
-
-        int locAuthors = 0;
-
         int weightedAgeSum = 0;
 
-        for(GitFileChange gitFileChange : history){
-            authors.add(gitFileChange.getCommit().getAuthor());
-            commits.add(gitFileChange.getCommit().getHash());
+        LocalDateTime lastCommitOfReleaseDate = lastCommitActualRelease.getCommitDate();
 
-            revisionsLOCAdded.merge(gitFileChange.getCommit().getHash(), gitFileChange.getAdded(), Integer::sum);
-            changeSetPerCommit.merge(gitFileChange.getCommit().getHash(), 1, Integer::sum);
+        for (GitFileChange change : history){
+            String hash = change.getCommit().getHash();
+            String author = change.getCommit().getAuthor();
+            LocalDateTime changeDate = change.getCommit().getCommitDate();
 
-            int localChurn = gitFileChange.getAdded() + gitFileChange.getDeleted();
+            authors.add(author);
+            commits.add(hash);
 
+            locAddedPerCommit.merge(hash, change.getAdded(), Integer::sum);
+
+            changeSetPerCommit.merge(hash, 1, Integer::sum);
+
+            int localChurn = change.getAdded() + change.getDeleted();
             churn += localChurn;
-            totalAdded += gitFileChange.getAdded();
+            totalAdded += change.getAdded();
 
-            maxChurn = Math.max(maxChurn, localChurn);
-            maxAdded = Math.max(maxAdded, gitFileChange.getAdded());
+            maxChurn = Math.max(maxChurn, churn);
+            maxAdded = Math.max(maxAdded, change.getAdded());
 
-            int ageWeight = (int) (commitActualRelease.getCommitDate().toLocalDate().toEpochDay() -
-                    gitFileChange.getCommit().getCommitDate().toLocalDate().toEpochDay());
-            weightedAgeSum += ageWeight;
+            int daysFromCommit = (int) (lastCommitOfReleaseDate.toLocalDate().toEpochDay() - changeDate.toLocalDate().toEpochDay());
+            weightedAgeSum += daysFromCommit;
         }
 
         int revisions = commits.size();
+        int nAuthors = authors.size();
 
-
-        int loc = GitManager.getLocAtCommit(classPath, commitActualRelease);
-        locAuthors = revisions == 0 ? 0 : loc/ authors.size();
-
-        String classContent = GitManager.getFileContentAtCommit(classPath, commitActualRelease);
-
-        int smells = PMDManager.getNSmells(classPath, classContent);
-        double smellsDensity = loc > 0 ? (double) smells / loc : 0;
-
-        classRecord.setSmells(smells);
-        classRecord.setSmellsDensity(smellsDensity);
+        int locAuthors = ((nAuthors == 0 || loc == 0) ? 0 : loc/nAuthors);
+        int maxLocAdded = locAddedPerCommit.values().stream().mapToInt(Integer::intValue).max().orElse(0);
 
         int changeSetSize = changeSetPerCommit.size();
-        int maxChangeSet = changeSetPerCommit.values()
-                        .stream().mapToInt(i -> i).max().orElse(0);
+        int maxChangeSet = changeSetPerCommit.values().stream().mapToInt(Integer::intValue).max().orElse(0);
+        double avgChangeSet = (revisions == 0 ? 0 : (double) changeSetSize / revisions);
 
-        int age = history.isEmpty() ? 0 : (int) (commitActualRelease.getCommitDate().toLocalDate().toEpochDay() - history.getFirst().getCommit().getCommitDate().toLocalDate().toEpochDay());
+        int age = 0;
 
-        classRecord.setLoc(loc);
+        if(!history.isEmpty()){
+            LocalDateTime firstChangeDate = history.getFirst().getCommit().getCommitDate();
+            age = (int) (lastCommitOfReleaseDate.toLocalDate().toEpochDay() - firstChangeDate.toLocalDate().toEpochDay());
+        }
+
+        double weightedAge = (revisions == 0 ? 0 : (double) weightedAgeSum / revisions);
+
+        classRecord.setClassName(classPath);
         classRecord.setNumberRevision(revisions);
-        classRecord.setNumberAuthors(authors.size());
-
+        classRecord.setNumberAuthors(nAuthors);
+        classRecord.setLocAuthors(locAuthors);
+        classRecord.setMaxOverRevisionLOCAdded(maxLocAdded);
+        classRecord.setAverageLOCAddedPerRevision(revisions == 0 ? 0 : (double) totalAdded / revisions);
         classRecord.setChurn(churn);
         classRecord.setMaxChurn(maxChurn);
         classRecord.setAverageChurn(revisions == 0 ? 0 : (double) churn / revisions);
-
-        classRecord.setMaxOverRevisionLOCAdded(maxAdded);
-        classRecord.setAverageLOCAddedPerRevision(revisions == 0 ? 0 : (double) totalAdded / revisions);
-
         classRecord.setChangeSetSize(changeSetSize);
         classRecord.setMaxChangeSet(maxChangeSet);
-        classRecord.setAverageChangeSet(revisions == 0 ? 0 : (double) changeSetSize / revisions);
-
-        classRecord.setLocAuthors(locAuthors);
-
+        classRecord.setAverageChangeSet(avgChangeSet);
         classRecord.setAge(age);
-        classRecord.setWeightedAge(revisions == 0 ? 0 : weightedAgeSum / revisions);
+        classRecord.setWeightedAge(weightedAge);
+        classRecord.setBuggy(false);
 
         return classRecord;
-    }
+     }
 }
 
 
