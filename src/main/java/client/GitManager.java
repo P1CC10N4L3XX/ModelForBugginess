@@ -5,6 +5,7 @@ import exceptions.FirstCommitOfProjectNotFoundException;
 import models.Commit;
 import models.GitFileChange;
 import models.ProjectRelease;
+import models.TicketBugRecord;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import utils.ConfigManager;
@@ -287,8 +288,65 @@ public class GitManager {
         return historyMap;
     }
 
+    public static List<String> getBuggyClassesFromFix(TicketBugRecord ticket) throws IOException, InterruptedException{
 
+        String ticketKey = ticket.getKey();
 
+        ProcessBuilder processBuilder = new ProcessBuilder(
+                "git",
+                "log",
+                "--all",
+                "--format=%H",
+                "--grep=" + ticketKey
+        );
+
+        processBuilder.directory(new File(localRepoPath));
+        Process process = processBuilder.start();
+
+        List<String> buggyClasses = new ArrayList<>();
+
+        try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(process.getInputStream()))){
+            String commitHash;
+            while ((commitHash = bufferedReader.readLine()) != null){
+                commitHash = commitHash.trim();
+                if (commitHash.isEmpty()) continue;
+
+                List<String> changedFiles = getChangedJavaFiles(commitHash);
+                buggyClasses.addAll(changedFiles);
+            }
+        }
+
+        return buggyClasses;
+
+    }
+
+    private static List<String> getChangedJavaFiles(String commitHash) throws IOException, InterruptedException{
+        ProcessBuilder processBuilder = new ProcessBuilder(
+                "git",
+                "diff-tree",
+                "--no-commit-id",
+                "-r",
+                "--name-only",
+                commitHash
+        );
+
+        processBuilder.directory(new File(localRepoPath));
+        Process process = processBuilder.start();
+
+        List<String> javaFiles = new ArrayList<>();
+
+        try(BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            String line;
+            while ((line = bufferedReader.readLine()) != null){
+                if (line.endsWith(".java")){
+                    javaFiles.add(line.trim());
+                }
+            }
+        }
+
+        process.waitFor();
+        return javaFiles;
+    }
 
 
     private static int parse(String s){

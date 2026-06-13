@@ -5,6 +5,7 @@ import controller.GetReleaseInfo;
 import controller.GetTicketInfo;
 import client.GitManager;
 import controller.MetricsCalculator;
+import controller.SZZ;
 import exceptions.CommitOfReleaseNotFoundException;
 import exceptions.FirstCommitOfProjectNotFoundException;
 import models.*;
@@ -59,6 +60,8 @@ public class Main {
                 Map<String, List<GitFileChange>> historyMap = GitManager.getAllFileHistory(commitPrevRelease, commitActualRelease);
                 Map<String, Integer> locMap = GitManager.getAllLocAtCommit(javaClassPaths,commitActualRelease);
                 Map<String, String> contentMap = GitManager.getAllFileContentAtCommit(commitActualRelease);
+                Map<Integer, List<String>> buggyMap = SZZ.computeBuggyClasses(releases, tickets);
+
 
                 for(String classPath : javaClassPaths){
                     try {
@@ -70,6 +73,8 @@ public class Main {
                         int nSmells = PMDManager.getNSmells(classPath, contentMap.get(classPath));
                         classRecord.setSmells(nSmells);
                         classRecord.setSmellsDensity(loc == 0 ? 0 : (double)nSmells/loc);
+                        List<String> buggyClasses = buggyMap.getOrDefault(i, List.of());
+                        classRecord.setBuggy(buggyClasses.contains(classPath));
                         writeClassRecordToCSV(classRecord);
                     }catch (Exception e){
                         e.printStackTrace();
@@ -135,7 +140,7 @@ public class Main {
             writer.print(classRecord.getAverageChangeSet() + ",");
             writer.print(classRecord.getAge() + ",");
             writer.print(classRecord.getWeightedAge() + ",");
-            writer.println(classRecord.isBuggy());
+            writer.println(classRecord.isBuggy() ? "yes" : "no");
 
         } catch (IOException e) {
             e.printStackTrace();
