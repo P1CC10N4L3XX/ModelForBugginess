@@ -10,13 +10,11 @@ import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import utils.ConfigManager;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static utils.CommandRunner.runCommand;
 
@@ -183,6 +181,150 @@ public class GitManager {
 
     }
 
+    public static Map<ProjectRelease, Commit> getLastCommitForEachRelease(List<ProjectRelease> releases) throws IOException, InterruptedException{
+        Map<ProjectRelease, Commit> releaseCommitMap = new HashMap<>();
+
+        ProcessBuilder processBuilder = new ProcessBuilder(
+                "git",
+                "log",
+                "--format=%H|%an|%ad|%s",
+                "--date="+isoStrictFormat,
+                "HEAD"
+        );
+
+        processBuilder.directory(new File(localRepoPath));
+        Process process = processBuilder.start();
+
+        List<Commit> allCommits = new ArrayList<>();
+
+        try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(process.getInputStream()))){
+            String line;
+
+            while ((line = bufferedReader.readLine()) != null){
+                line = line.trim();
+                if(line.isEmpty()) continue;
+
+                String[] parts = line.split("\\|", 4);
+                if (parts.length < 4) continue;
+
+                try {
+                    String hash = parts[0].trim();
+                    String author = parts[1].trim();
+                    LocalDateTime date = OffsetDateTime.parse(parts[2].trim()).toLocalDateTime();
+                    String message = parts[3].trim();
+                    allCommits.add(new Commit(hash,author,date,message));
+                }catch (Exception _){}
+            }
+        }
+
+        process.waitFor();
+
+        for (ProjectRelease release : releases){
+            LocalDateTime releaseDate = release.getReleaseDate();
+
+            Commit lastCommitOfRelease = null;
+            for (Commit commit : allCommits){
+                if(!commit.getCommitDate().isAfter(releaseDate)){
+                    lastCommitOfRelease = commit;
+                    break;
+                }
+            }
+            if (lastCommitOfRelease != null){
+                releaseCommitMap.put(release, lastCommitOfRelease);
+            }else {
+                //TODO throw an exception
+                System.out.println("No commit found for release: "+release.getName());
+            }
+        }
+
+        return releaseCommitMap;
+    }
+
+    public static Map<ProjectRelease, Map<String, List<GitFileChange>>> getFullHistoryForEachRelease(Map<ProjectRelease, Commit> releaseCommitMap) throws IOException, InterruptedException{
+        Map<ProjectRelease, Map<String, List<GitFileChange>>> result = new LinkedHashMap<>();
+
+        for (ProjectRelease release : releaseCommitMap.keySet()){
+            result.put(release, new HashMap<>());
+        }
+
+        List<ProjectRelease> sortedReleases = releaseCommitMap.keySet().stream()
+                .sorted(Comparator.comparing(ProjectRelease::getReleaseDate))
+                .toList();
+
+        ProjectRelease lastRelease = sortedReleases.getLast();
+        Commit lastCommit = releaseCommitMap.get(lastRelease);
+
+        ProcessBuilder processBuilder = new ProcessBuilder(
+                "git",
+                "log",
+                lastCommit.getHash(),
+                "--numstat",
+                "--format=%H|%an|%ad",
+                "--date="+isoStrictFormat
+        );
+
+        processBuilder.directory(new File(localRepoPath));
+        Process process = processBuilder.start();
+
+        Map<String, List<GitFileChange>> fullHistory = new LinkedHashMap<>();
+
+        try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(process.getInputStream()))){
+            String line;
+            String currenHash = null;
+            String currenAuthor = null;
+            LocalDateTime currentDate = null;
+
+            while ((line = bufferedReader.readLine())!=null){
+                line = line.trim();
+                if(line.isEmpty()) continue;
+
+                if (line.contains("|")){
+                    String[] parts = line.split("\\|", 3);
+                    if (parts.length < 3) continue;
+                    currenHash = parts[0].trim();
+                    currenAuthor = parts[1].trim();
+                    try{
+                        currentDate = OffsetDateTime.parse(parts[2].trim()).toLocalDateTime();
+                    }catch (Exception _){
+                        currentDate = null;
+                    }
+                }else if (line.matches("\\d+\\s+\\d+\\s+.*") && currentDate != null){
+                    String[] parts = line.split("\\s+",3);
+                    String filePath = parts[2].trim();
+
+                    if (!filePath.endsWith(".java")) continue;
+
+                    GitFileChange change = new GitFileChange(
+                        new Commit(currenHash, currenAuthor, currentDate, null),
+                        parse(parts[0]),
+                        parse(parts[1])
+                    );
+
+                    fullHistory.computeIfAbsent(filePath, k -> new ArrayList<>()).add(change);
+                }
+            }
+        }
+        process.waitFor();
+
+        for (ProjectRelease release : sortedReleases){
+            LocalDateTime releaseDate = releaseCommitMap.get(release).getCommitDate();
+            Map<String, List<GitFileChange>> historyForRelease = result.get(release);
+
+            for (Map.Entry<String, List<GitFileChange>> entry : fullHistory.entrySet()){
+                String classPath = entry.getKey();
+                List<GitFileChange> allChanges = entry.getValue();
+
+                List<GitFileChange> filteredChanges = allChanges.stream()
+                        .filter(c -> !c.getCommit().getCommitDate().isAfter(releaseDate))
+                        .toList();
+                if (!filteredChanges.isEmpty()){
+                    historyForRelease.put(classPath, filteredChanges);
+                }
+            }
+        }
+        return result;
+    }
+
     public static Commit getLastCommitOfRelease(ProjectRelease release) throws CommitOfReleaseNotFoundException,IOException, InterruptedException {
 
         String gitDate = release.getReleaseDate().toString().replace("T"," ");
@@ -288,6 +430,88 @@ public class GitManager {
         return historyMap;
     }
 
+    public static Map<String, List<String>> getAllBugFixCommits(List<TicketBugRecord> tickets) throws IOException, InterruptedException{
+        Map<String, List<String>> commitToFiles = new HashMap<>();
+
+        String grepPattern = tickets.stream()
+                .map(TicketBugRecord::getKey)
+                .collect(Collectors.joining("\\|"));
+
+        if(grepPattern.isEmpty()) return commitToFiles;
+
+        ProcessBuilder processBuilder = new ProcessBuilder(
+                "git",
+                "log",
+                "--all",
+                "--format=%H|$s",
+                "--grep" + grepPattern
+        );
+
+        processBuilder.directory(new File(localRepoPath));
+        Process process = processBuilder.start();
+
+        List<String> commitHashes = new ArrayList<>();
+        Map<String, String> hashToMessage = new HashMap<>();
+
+        try(BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(process.getInputStream()))){
+            String line;
+            while ((line = bufferedReader.readLine())!=null){
+                line = line.trim();
+                if(line.isEmpty()) continue;
+
+                String[] parts = line.split("\\|",2);
+                if (parts.length < 2) continue;
+
+                String hash = parts[0].trim();
+                String message = parts[1].trim();
+                commitHashes.add(hash);
+                hashToMessage.put(hash, message);
+            }
+        }
+
+        process.waitFor();
+
+        if(commitHashes.isEmpty()) return commitToFiles;
+
+        ProcessBuilder processBuilder2 = new ProcessBuilder(
+                "git",
+                "diff-tree",
+                "--no-commit-id",
+                "-r",
+                "--name-only",
+                "--stdin"
+        );
+
+        processBuilder2.directory(new File(localRepoPath));
+        processBuilder2.redirectErrorStream(true);
+        Process process2 = processBuilder2.start();
+
+        try (PrintWriter stdin = new PrintWriter(process2.getOutputStream())){
+            for (String hash : commitHashes){
+                stdin.println(hash);
+            }
+        }
+
+        String currentHash = null;
+        try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(process2.getInputStream()))){
+            String line;
+            while ((line = bufferedReader.readLine())!=null){
+                line = line.trim();
+                if(line.isEmpty()) continue;
+                if(commitHashes.contains(line)){
+                    currentHash = line;
+                    commitToFiles.computeIfAbsent(currentHash, k-> new ArrayList<>());
+                }else if(currentHash != null && line.endsWith(".java")){
+                    commitToFiles.get(currentHash).add(line);
+                }
+            }
+        }
+
+        process2.waitFor();
+
+        return commitToFiles;
+    }
+
     public static List<String> getBuggyClassesFromFix(TicketBugRecord ticket) throws IOException, InterruptedException{
 
         String ticketKey = ticket.getKey();
@@ -356,5 +580,6 @@ public class GitManager {
             return 0;
         }
     }
+
 
 }

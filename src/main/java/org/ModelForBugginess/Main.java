@@ -49,50 +49,53 @@ public class Main {
         List<ProjectRelease> releasesToProcess = releases.subList(0, limit);
         GitManager.cloneRepo();
 
-        for (ProjectRelease release : releasesToProcess){
-            System.out.println(release.getName());
-        }
+        System.out.println("Collecting all git history...");
 
         Map<Integer, List<String>> buggyMap = SZZ.computeBuggyClasses(releases, tickets);
+        System.out.println("Computed buggy classes");
+        Map<ProjectRelease, Commit> commitForEachRelease = GitManager.getLastCommitForEachRelease(releasesToProcess);
+        System.out.println("Computed commit for each release");
+        Map<ProjectRelease, Map<String, List<GitFileChange>>> fullHistoryMap = GitManager.getFullHistoryForEachRelease(commitForEachRelease);
+        System.out.println("Computed fullHistoryMap");
+        Commit firstCommitOfProject = GitManager.getFirstCommitOfProject();
+
+        System.out.println("All history from git collected");
 
 
         for(int i = 0; i<releasesToProcess.size(); i++){
             printProgress(i, releasesToProcess.size());
 
-            try {
-                Commit commitActualRelease = GitManager.getLastCommitOfRelease(releasesToProcess.get(i));
-                Commit commitPrevRelease = i > 0 ? GitManager.getLastCommitOfRelease(releasesToProcess.get(i-1)) : GitManager.getFirstCommitOfProject();
-                List<String> javaClassPaths = GitManager.getJavaFilesPerCommit(commitActualRelease);
-                Map<String, List<GitFileChange>> historyMap = GitManager.getAllFileHistory(commitPrevRelease, commitActualRelease);
-                Map<String, Integer> locMap = GitManager.getAllLocAtCommit(javaClassPaths,commitActualRelease);
-                Map<String, String> contentMap = GitManager.getAllFileContentAtCommit(commitActualRelease);
-                Map<String, Integer> smellsMap = PMDManager.getAllSmells(contentMap);
 
+            Commit commitActualRelease = commitForEachRelease.get(releasesToProcess.get(i));
+            Commit commitPrevRelease = i > 0 ? commitForEachRelease.get(releasesToProcess.get(i-1)) : firstCommitOfProject;
+            List<String> javaClassPaths = GitManager.getJavaFilesPerCommit(commitActualRelease);
+            Map<String, List<GitFileChange>> historyMapFromStart = fullHistoryMap.get(releasesToProcess.get(i));
+            //Map<String, Integer> locMap = GitManager.getAllLocAtCommit(javaClassPaths,commitActualRelease);
+            //Map<String, String> contentMap = GitManager.getAllFileContentAtCommit(commitActualRelease);
+            //Map<String, Integer> smellsMap = PMDManager.getAllSmells(contentMap);
 
-                for(String classPath : javaClassPaths){
-                    try {
-                        List<GitFileChange> history = historyMap.getOrDefault(classPath, Collections.emptyList());
-                        int loc = locMap.getOrDefault(classPath, 0);
+            //TODO locMap, contentMap e smellsMap out from for
+            for(String classPath : javaClassPaths){
+                try {
+                    List<GitFileChange> history = historyMapFromStart.getOrDefault(classPath, Collections.emptyList());
+                    //int loc = locMap.getOrDefault(classPath, 0);
+                    int loc = 0;
+                    //TODO: modify calculateMetrics to calculate the metrics with respect to actuale release and from release 0
+                    ClassRecord classRecord = MetricsCalculator.calculateMetrics(classPath, history, loc, commitActualRelease);
+                    classRecord.setRelease(releasesToProcess.get(i).getName());
 
-                        ClassRecord classRecord = MetricsCalculator.calculateMetrics(classPath, history, loc, commitActualRelease);
-                        classRecord.setRelease(releasesToProcess.get(i).getName());
+                    //int nSmells = smellsMap.getOrDefault(classPath, 0);
+                    //classRecord.setSmells(nSmells);
+                    //classRecord.setSmellsDensity(loc == 0 ? 0 : (double)nSmells/loc);
 
-                        int nSmells = smellsMap.getOrDefault(classPath, 0);
-                        classRecord.setSmells(nSmells);
-                        classRecord.setSmellsDensity(loc == 0 ? 0 : (double)nSmells/loc);
+                    List<String> buggyClasses = buggyMap.getOrDefault(i, List.of());
+                    classRecord.setBuggy(buggyClasses.contains(classPath));
 
-                        List<String> buggyClasses = buggyMap.getOrDefault(i, List.of());
-                        classRecord.setBuggy(buggyClasses.contains(classPath));
-
-                        writeClassRecordToCSV(classRecord);
-                    }catch (Exception e){
-                        e.printStackTrace();
-                    }
+                    writeClassRecordToCSV(classRecord);
+                }catch (Exception e){
+                    e.printStackTrace();
                 }
-            } catch (CommitOfReleaseNotFoundException | FirstCommitOfProjectNotFoundException e) {
-                System.out.println(e.getMessage());
             }
-
         }
         System.out.println("Done! Results saved to "+METRICS_FILE);
 

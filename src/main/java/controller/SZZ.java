@@ -5,31 +5,42 @@ import models.GitFileChange;
 import models.ProjectRelease;
 import models.TicketBugRecord;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class SZZ {
 
     public static Map<Integer, List<String>> computeBuggyClasses (List<ProjectRelease> releases, List<TicketBugRecord> tickets) throws Exception {
         double p = Proportion.computeP(tickets, releases);
-        System.out.println("Proportion P = " + p);
 
         Proportion.assignMissingIV(releases,tickets, p);
 
+        Map<String, List<String>> commitToFiles = GitManager.getAllBugFixCommits(tickets);
+
+        Map<String, List<String>> ticketToBuggyClasses = new HashMap<>();
+        for (Map.Entry<String, List<String>> entry : commitToFiles.entrySet()){
+            String hash = entry.getKey();
+            List<String> files = entry.getValue();
+
+            for (TicketBugRecord ticket : tickets){
+                if(hash.contains(ticket.getKey()) || entry.getValue().toString().contains(ticket.getKey())){
+                    ticketToBuggyClasses
+                            .computeIfAbsent(ticket.getKey(), k->new ArrayList<>())
+                            .addAll(files);
+                }
+            }
+        }
         Map<Integer, List<String>> buggyMap = new HashMap<>();
 
         for (TicketBugRecord ticket : tickets){
             int iv = getIV(releases, ticket);
-            int fv = getFV(releases,ticket);
+            int fv = getFV(releases, ticket);
 
             if (iv < 0 || fv < 0 || iv >= fv) continue;
 
-            List<String> buggyClasses = GitManager.getBuggyClassesFromFix(ticket);
+            List<String> buggyClasses = ticketToBuggyClasses.getOrDefault(ticket.getKey(), Collections.emptyList());
 
-            for (int r = iv; r<fv; r++){
-                buggyMap.computeIfAbsent(r, k -> new ArrayList<>()).addAll(buggyClasses);
+            for (int r = iv; r < fv; r++){
+                buggyMap.computeIfAbsent(r, k-> new ArrayList<>()).addAll(buggyClasses);
             }
         }
 
