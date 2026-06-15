@@ -6,8 +6,6 @@ import controller.GetTicketInfo;
 import client.GitManager;
 import controller.MetricsCalculator;
 import controller.SZZ;
-import exceptions.CommitOfReleaseNotFoundException;
-import exceptions.FirstCommitOfProjectNotFoundException;
 import models.*;
 
 import java.io.FileWriter;
@@ -57,7 +55,11 @@ public class Main {
         System.out.println("Computed commit for each release");
         Map<ProjectRelease, Map<String, List<GitFileChange>>> fullHistoryMap = GitManager.getFullHistoryForEachRelease(commitForEachRelease);
         System.out.println("Computed fullHistoryMap");
+        Map<ProjectRelease, Map<String, Integer>> locForEachRelease = GitManager.getAllLocForEachRelease(commitForEachRelease);
+        System.out.println("Computed all locs");
+
         Commit firstCommitOfProject = GitManager.getFirstCommitOfProject();
+
 
         System.out.println("All history from git collected");
 
@@ -70,23 +72,22 @@ public class Main {
             Commit commitPrevRelease = i > 0 ? commitForEachRelease.get(releasesToProcess.get(i-1)) : firstCommitOfProject;
             List<String> javaClassPaths = GitManager.getJavaFilesPerCommit(commitActualRelease);
             Map<String, List<GitFileChange>> historyMapFromStart = fullHistoryMap.get(releasesToProcess.get(i));
-            //Map<String, Integer> locMap = GitManager.getAllLocAtCommit(javaClassPaths,commitActualRelease);
-            //Map<String, String> contentMap = GitManager.getAllFileContentAtCommit(commitActualRelease);
-            //Map<String, Integer> smellsMap = PMDManager.getAllSmells(contentMap);
+            Map<String, Integer> locMap = locForEachRelease.get(releasesToProcess.get(i));
+            Map<String, String> contentMap = GitManager.getAllFileContentAtCommit(commitActualRelease);
+            Map<String, Integer> smellsMap = PMDManager.getAllSmells(contentMap);
 
-            //TODO locMap, contentMap e smellsMap out from for
+            //TODO contentMap e smellsMap out from for
             for(String classPath : javaClassPaths){
                 try {
                     List<GitFileChange> history = historyMapFromStart.getOrDefault(classPath, Collections.emptyList());
-                    //int loc = locMap.getOrDefault(classPath, 0);
-                    int loc = 0;
-                    //TODO: modify calculateMetrics to calculate the metrics with respect to actuale release and from release 0
+                    int loc = locMap.getOrDefault(classPath, 0);
+                    //TODO: modify calculateMetrics to calculate the metrics with respect to actual release and from release 0
                     ClassRecord classRecord = MetricsCalculator.calculateMetrics(classPath, history, loc, commitActualRelease);
                     classRecord.setRelease(releasesToProcess.get(i).getName());
 
-                    //int nSmells = smellsMap.getOrDefault(classPath, 0);
-                    //classRecord.setSmells(nSmells);
-                    //classRecord.setSmellsDensity(loc == 0 ? 0 : (double)nSmells/loc);
+                    int nSmells = smellsMap.getOrDefault(classPath, 0);
+                    classRecord.setSmells(nSmells);
+                    classRecord.setSmellsDensity(loc == 0 ? 0 : (double)nSmells/loc);
 
                     List<String> buggyClasses = buggyMap.getOrDefault(i, List.of());
                     classRecord.setBuggy(buggyClasses.contains(classPath));
