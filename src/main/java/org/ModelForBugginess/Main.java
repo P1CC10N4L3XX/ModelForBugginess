@@ -7,6 +7,8 @@ import client.GitManager;
 import controller.MetricsCalculator;
 import controller.SZZ;
 import models.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.FileWriter;
 import java.io.IOException;
@@ -18,20 +20,23 @@ import java.util.Map;
 
 public class Main {
     private static final String METRICS_FILE = "Syncope_classes_metrics.csv";
+    private static final Logger LOGGER = LoggerFactory.getLogger(Main.class);
+
+    private Main(){}
 
     public static void main() throws Exception {
-        System.out.println("Starting data collection for project SYNCOPE...");
+        LOGGER.info("Starting data collection for project SYNCOPE...");
 
-        System.out.println("Collecting releases...");
+        LOGGER.info("Collecting releases...");
         List<ProjectRelease> releases = GetReleaseInfo.run();
-        System.out.println("Total releases found: " + releases.size());
+        LOGGER.info("Total releases found: {}", releases.size());
 
-        System.out.println("Collecting tickets...");
+        LOGGER.info("Collecting tickets...");
         List<TicketBugRecord> tickets = GetTicketInfo.run();
-        System.out.println("Total tickets found: " + tickets.size());
+        LOGGER.info("Total tickets found: {}", tickets.size());
 
-        System.out.println("Collection completed.");
-        System.out.println("Results saved to SYNCOPE_Releases.csv and SYNCOPE_Tickets.csv");
+        LOGGER.info("Collection completed.");
+        LOGGER.info("Results saved to SYNCOPE_Releases.csv and SYNCOPE_Tickets.csv");
 
         initMetricsFile();
 
@@ -47,23 +52,23 @@ public class Main {
         List<ProjectRelease> releasesToProcess = releases.subList(0, limit);
         GitManager.cloneRepo();
 
-        System.out.println("Collecting all git history...");
+        LOGGER.info("Collecting all git history...");
 
         Map<Integer, List<String>> buggyMap = SZZ.computeBuggyClasses(releases, tickets);
-        System.out.println("Computed buggy classes");
+        LOGGER.info("Computed buggy classes");
         Map<ProjectRelease, Commit> commitForEachRelease = GitManager.getLastCommitForEachRelease(releasesToProcess);
-        System.out.println("Computed commit for each release");
+        LOGGER.info("Computed commit for each release");
         Map<ProjectRelease, Map<String, List<GitFileChange>>> fullHistoryMap = GitManager.getFullHistoryForEachRelease(commitForEachRelease);
-        System.out.println("Computed fullHistoryMap");
+        LOGGER.info("Computed fullHistoryMap");
         Map<ProjectRelease, Map<String, Integer>> locForEachRelease = GitManager.getAllLocForEachRelease(commitForEachRelease);
-        System.out.println("Computed all locs");
+        LOGGER.info("Computed all locs");
 
         Commit firstCommitOfProject = GitManager.getFirstCommitOfProject();
 
 
-        System.out.println("All history from git collected");
+        LOGGER.info("All history from git collected");
 
-        System.out.println("Number of releases to process: "+ releasesToProcess.size());
+        LOGGER.info("Number of releases to process: {}", releasesToProcess.size());
 
 
         for(int i = 0; i<releasesToProcess.size(); i++){
@@ -85,7 +90,7 @@ public class Main {
                     List<GitFileChange> historyFromStart = historyMapFromStart.getOrDefault(classPath, Collections.emptyList());
                     List<GitFileChange> historyInRelease = historyMapInRelease.getOrDefault(classPath, Collections.emptyList());
                     int loc = locMap.getOrDefault(classPath, 0);
-                    //TODO: modify calculateMetrics to calculate the metrics with respect to actual release and from release 0
+
                     ClassRecord classRecord = MetricsCalculator.calculateMetrics(classPath, historyFromStart, historyInRelease, loc, commitActualRelease);
                     classRecord.setRelease(releasesToProcess.get(i).getName());
 
@@ -97,12 +102,12 @@ public class Main {
                     classRecord.setBuggy(buggyClasses.contains(classPath));
 
                     writeClassRecordToCSV(classRecord);
-                }catch (Exception e){
-                    e.printStackTrace();
+                }catch (IOException | InterruptedException e){
+                    LOGGER.error("Error processing class {}", classPath, e);
                 }
             }
         }
-        System.out.println("Done! Results saved to "+METRICS_FILE);
+
 
     }
 
@@ -123,14 +128,14 @@ public class Main {
         bar.append(percent).append("% (")
                 .append(current).append("/")
                 .append(total).append(")");
-        System.out.println(bar);
+        LOGGER.info(bar.toString());
     }
 
     private static void initMetricsFile() {
         try (PrintWriter writer = new PrintWriter(METRICS_FILE)) {
             writer.println("release,className,smells,smellsDensity,loc,numberRevision,numberDefectedVersion,numberAuthors,locAuthors,maxOverRevisionLOCAdded,averageLOCAddedPerRevision,churn,maxChurn,averageChurn,changeSetSize,maxChangeSet,averageChangeSet,LocTouched,age,weightedAge,buggy");
         } catch (IOException e) {
-            e.printStackTrace();
+            LOGGER.error("Error initializing metrics file", e);
         }
     }
 
@@ -160,7 +165,7 @@ public class Main {
             writer.println(classRecord.isBuggy() ? "yes" : "no");
 
         } catch (IOException e) {
-            e.printStackTrace();
+            LOGGER.error("Error writing CSV record for class {}", classRecord.getClassName(), e);
         }
     }
 

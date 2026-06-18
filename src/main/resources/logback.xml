@@ -1,0 +1,38 @@
+<configuration>
+
+    <!-- ===================== -->
+    <!-- CONSOLE (tuo progetto) -->
+    <!-- ===================== -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss} %-5level %logger - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- ===================== -->
+    <!-- FILE (PMD) -->
+    <!-- ===================== -->
+    <appender name="PMD_FILE" class="ch.qos.logback.core.FileAppender">
+        <file>pmd-analysis.log</file>
+        <append>true</append>
+
+        <encoder>
+            <pattern>%d{HH:mm:ss} %-5level %logger - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- ===================== -->
+    <!-- ROOT LOGGER (TUO PROGETTO) -->
+    <!-- ===================== -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+
+    <!-- ===================== -->
+    <!-- PMD LOGGER (SEPARATO) -->
+    <!-- ===================== -->
+    <logger name="net.sourceforge.pmd" level="INFO" additivity="false">
+        <appender-ref ref="PMD_FILE"/>
+    </logger>
+
+</configuration>
