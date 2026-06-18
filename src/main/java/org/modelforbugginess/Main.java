@@ -1,4 +1,4 @@
-package org.ModelForBugginess;
+package org.modelforbugginess;
 
 import client.PMDManager;
 import controller.GetReleaseInfo;
