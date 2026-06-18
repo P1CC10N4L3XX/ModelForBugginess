@@ -6,14 +6,12 @@ import models.Commit;
 import models.GitFileChange;
 import models.ProjectRelease;
 import models.TicketBugRecord;
-import net.sf.saxon.expr.Component;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
-import org.checkerframework.checker.lock.qual.ReleasesNoLocks;
 import utils.ConfigManager;
 
+import javax.sound.sampled.Port;
 import java.io.*;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.*;
@@ -142,7 +140,7 @@ public class GitManager {
 
     }
 
-    public static Map<ProjectRelease, Commit> getLastCommitForEachRelease(List<ProjectRelease> releases) throws IOException, InterruptedException{
+    public static Map<ProjectRelease, Commit> getLastCommitForEachRelease(List<ProjectRelease> releases) throws IOException, InterruptedException, CommitOfReleaseNotFoundException {
         Map<ProjectRelease, Commit> releaseCommitMap = new HashMap<>();
 
         ProcessBuilder processBuilder = new ProcessBuilder(
@@ -194,11 +192,29 @@ public class GitManager {
                 releaseCommitMap.put(release, lastCommitOfRelease);
             }else {
                 //TODO throw an exception
-                System.out.println("No commit found for release: "+release.getName());
+                throw new CommitOfReleaseNotFoundException();
             }
         }
 
         return releaseCommitMap;
+    }
+
+    public static Map<String, List<GitFileChange>> getHistoryInRelease(Commit commitPrevRelease, Commit commitActualRelease, Map<String, List<GitFileChange>> historyFromStart){
+        Map<String, List<GitFileChange>> historyInRelease = new HashMap<>();
+        LocalDateTime dateFrom = commitPrevRelease.getCommitDate();
+        LocalDateTime dateTo = commitActualRelease.getCommitDate();
+
+        for (Map.Entry<String, List<GitFileChange>> entry : historyFromStart.entrySet()){
+            List<GitFileChange> filtered = entry.getValue().stream()
+                    .filter(c->c.getCommit().getCommitDate().isAfter(dateFrom) &&
+                            !c.getCommit().getCommitDate().isAfter(dateTo))
+                    .toList();
+            if (!filtered.isEmpty()){
+                historyInRelease.put(entry.getKey(), filtered);
+            }
+        }
+
+        return historyInRelease;
     }
 
     public static Map<ProjectRelease, Map<String, List<GitFileChange>>> getFullHistoryForEachRelease(Map<ProjectRelease, Commit> releaseCommitMap) throws IOException, InterruptedException{
@@ -336,7 +352,8 @@ public class GitManager {
         Map<String, Integer> blobToLoc = new HashMap<>();
 
         if (!allBlobs.isEmpty()) {
-            ProcessBuilder processBuilder2 = new ProcessBuilder("git",
+            ProcessBuilder processBuilder2 = new ProcessBuilder(
+                    "git",
                     "cat-file",
                     "--batch"
             );
@@ -410,85 +427,52 @@ public class GitManager {
     }
 
     public static Map<String, List<String>> getAllBugFixCommits(List<TicketBugRecord> tickets) throws IOException, InterruptedException{
-        Map<String, List<String>> commitToFiles = new HashMap<>();
+        Map<String, List<String>> messageToFiles = new HashMap<>();
 
         String grepPattern = tickets.stream()
                 .map(TicketBugRecord::getKey)
                 .collect(Collectors.joining("\\|"));
 
-        if(grepPattern.isEmpty()) return commitToFiles;
+        if (grepPattern.isEmpty()) return messageToFiles;
 
         ProcessBuilder processBuilder = new ProcessBuilder(
                 "git",
                 "log",
                 "--all",
-                "--format=%H|$s",
-                "--grep" + grepPattern
+                "--name-only",
+                "--format=%H|%s",
+                "--grep=" + grepPattern
         );
 
         processBuilder.directory(new File(localRepoPath));
         Process process = processBuilder.start();
 
-        List<String> commitHashes = new ArrayList<>();
         Map<String, String> hashToMessage = new HashMap<>();
-
-        try(BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(process.getInputStream()))){
-            String line;
-            while ((line = bufferedReader.readLine())!=null){
-                line = line.trim();
-                if(line.isEmpty()) continue;
-
-                String[] parts = line.split("\\|",2);
-                if (parts.length < 2) continue;
-
-                String hash = parts[0].trim();
-                String message = parts[1].trim();
-                commitHashes.add(hash);
-                hashToMessage.put(hash, message);
-            }
-        }
-
-        process.waitFor();
-
-        if(commitHashes.isEmpty()) return commitToFiles;
-
-        ProcessBuilder processBuilder2 = new ProcessBuilder(
-                "git",
-                "diff-tree",
-                "--no-commit-id",
-                "-r",
-                "--name-only",
-                "--stdin"
-        );
-
-        processBuilder2.directory(new File(localRepoPath));
-        processBuilder2.redirectErrorStream(true);
-        Process process2 = processBuilder2.start();
-
-        try (PrintWriter stdin = new PrintWriter(process2.getOutputStream())){
-            for (String hash : commitHashes){
-                stdin.println(hash);
-            }
-        }
-
         String currentHash = null;
-        try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(process2.getInputStream()))){
+
+        try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(process.getInputStream()))){
             String line;
             while ((line = bufferedReader.readLine())!=null){
                 line = line.trim();
-                if(line.isEmpty()) continue;
-                if(commitHashes.contains(line)){
-                    currentHash = line;
-                    commitToFiles.computeIfAbsent(currentHash, k-> new ArrayList<>());
-                }else if(currentHash != null && line.endsWith(".java")){
-                    commitToFiles.get(currentHash).add(line);
+                if (line.isEmpty()) continue;
+
+                if (line.matches("[0-9a-f]{40}\\|.*")){
+                    String[] parts = line.split("\\|",2);
+                    currentHash = parts[0].trim();
+                    String message = parts[1].trim();
+                    hashToMessage.put(currentHash, message);
+                    messageToFiles.computeIfAbsent(message, k->new ArrayList<>());
+                }else if (currentHash != null && line.endsWith(".java")){
+                    String message = hashToMessage.get(currentHash);
+                    if (message != null){
+                        messageToFiles.get(message).add(line);
+                    }
                 }
             }
         }
+        process.waitFor();
 
-        process2.waitFor();
-
-        return commitToFiles;
+        return messageToFiles;
     }
 
 

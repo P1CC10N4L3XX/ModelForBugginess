@@ -63,6 +63,8 @@ public class Main {
 
         System.out.println("All history from git collected");
 
+        System.out.println("Number of releases to process: "+ releasesToProcess.size());
+
 
         for(int i = 0; i<releasesToProcess.size(); i++){
             printProgress(i, releasesToProcess.size());
@@ -72,17 +74,19 @@ public class Main {
             Commit commitPrevRelease = i > 0 ? commitForEachRelease.get(releasesToProcess.get(i-1)) : firstCommitOfProject;
             List<String> javaClassPaths = GitManager.getJavaFilesPerCommit(commitActualRelease);
             Map<String, List<GitFileChange>> historyMapFromStart = fullHistoryMap.get(releasesToProcess.get(i));
+            Map<String, List<GitFileChange>> historyMapInRelease = GitManager.getHistoryInRelease(commitPrevRelease, commitActualRelease, historyMapFromStart);
             Map<String, Integer> locMap = locForEachRelease.get(releasesToProcess.get(i));
             Map<String, String> contentMap = GitManager.getAllFileContentAtCommit(commitActualRelease);
             Map<String, Integer> smellsMap = PMDManager.getAllSmells(contentMap);
 
-            //TODO contentMap e smellsMap out from for
+
             for(String classPath : javaClassPaths){
                 try {
-                    List<GitFileChange> history = historyMapFromStart.getOrDefault(classPath, Collections.emptyList());
+                    List<GitFileChange> historyFromStart = historyMapFromStart.getOrDefault(classPath, Collections.emptyList());
+                    List<GitFileChange> historyInRelease = historyMapInRelease.getOrDefault(classPath, Collections.emptyList());
                     int loc = locMap.getOrDefault(classPath, 0);
                     //TODO: modify calculateMetrics to calculate the metrics with respect to actual release and from release 0
-                    ClassRecord classRecord = MetricsCalculator.calculateMetrics(classPath, history, loc, commitActualRelease);
+                    ClassRecord classRecord = MetricsCalculator.calculateMetrics(classPath, historyFromStart, historyInRelease, loc, commitActualRelease);
                     classRecord.setRelease(releasesToProcess.get(i).getName());
 
                     int nSmells = smellsMap.getOrDefault(classPath, 0);
@@ -124,7 +128,7 @@ public class Main {
 
     private static void initMetricsFile() {
         try (PrintWriter writer = new PrintWriter(METRICS_FILE)) {
-            writer.println("release,className,smells,smellsDensity,loc,numberRevision,numberDefectedVersion,numberAuthors,locAuthors,maxOverRevisionLOCAdded,averageLOCAddedPerRevision,churn,maxChurn,averageChurn,changeSetSize,maxChangeSet,averageChangeSet,age,weightedAge,buggy");
+            writer.println("release,className,smells,smellsDensity,loc,numberRevision,numberDefectedVersion,numberAuthors,locAuthors,maxOverRevisionLOCAdded,averageLOCAddedPerRevision,churn,maxChurn,averageChurn,changeSetSize,maxChangeSet,averageChangeSet,LocTouched,age,weightedAge,buggy");
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -140,7 +144,6 @@ public class Main {
             writer.print(classRecord.getSmellsDensity() + ",");
             writer.print(classRecord.getLoc() + ",");
             writer.print(classRecord.getNumberRevision() + ",");
-            writer.print(classRecord.getNumberDefectedVersion() + ",");
             writer.print(classRecord.getNumberAuthors() + ",");
             writer.print(classRecord.getLocAuthors() + ",");
             writer.print(classRecord.getMaxOverRevisionLOCAdded() + ",");
@@ -151,6 +154,7 @@ public class Main {
             writer.print(classRecord.getChangeSetSize() + ",");
             writer.print(classRecord.getMaxChangeSet() + ",");
             writer.print(classRecord.getAverageChangeSet() + ",");
+            writer.print(classRecord.getLocTouched() + ",");
             writer.print(classRecord.getAge() + ",");
             writer.print(classRecord.getWeightedAge() + ",");
             writer.println(classRecord.isBuggy() ? "yes" : "no");

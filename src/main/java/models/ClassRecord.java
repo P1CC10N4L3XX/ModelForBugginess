@@ -8,7 +8,6 @@ public class ClassRecord {
     private double smellsDensity;
     private int loc;
     private int numberRevision;
-    private int numberDefectedVersion;
     private int locAuthors;
     private int numberAuthors;
     private int maxOverRevisionLOCAdded;
@@ -19,11 +18,20 @@ public class ClassRecord {
     private int changeSetSize;
     private int maxChangeSet;
     private double averageChangeSet;
+    private int LocTouched;
     private int age;
     private double weightedAge;
     private boolean buggy;
 
     public ClassRecord(){}
+
+    public int getLocTouched() {
+        return LocTouched;
+    }
+
+    public void setLocTouched(int locTouched) {
+        LocTouched = locTouched;
+    }
 
     public String getRelease() {
         return release;
@@ -73,13 +81,6 @@ public class ClassRecord {
         this.numberRevision = numberRevision;
     }
 
-    public int getNumberDefectedVersion() {
-        return numberDefectedVersion;
-    }
-
-    public void setNumberDefectedVersion(int numberDefectedVersion) {
-        this.numberDefectedVersion = numberDefectedVersion;
-    }
 
     public int getMaxOverRevisionLOCAdded() {
         return maxOverRevisionLOCAdded;

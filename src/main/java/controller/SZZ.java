@@ -1,7 +1,6 @@
 package controller;
 
 import client.GitManager;
-import models.GitFileChange;
 import models.ProjectRelease;
 import models.TicketBugRecord;
 
@@ -14,15 +13,15 @@ public class SZZ {
 
         Proportion.assignMissingIV(releases,tickets, p);
 
-        Map<String, List<String>> commitToFiles = GitManager.getAllBugFixCommits(tickets);
+        Map<String, List<String>> messageToFiles = GitManager.getAllBugFixCommits(tickets);
 
         Map<String, List<String>> ticketToBuggyClasses = new HashMap<>();
-        for (Map.Entry<String, List<String>> entry : commitToFiles.entrySet()){
-            String hash = entry.getKey();
+        for (Map.Entry<String, List<String>> entry : messageToFiles.entrySet()){
+            String message = entry.getKey();
             List<String> files = entry.getValue();
 
             for (TicketBugRecord ticket : tickets){
-                if(hash.contains(ticket.getKey()) || entry.getValue().toString().contains(ticket.getKey())){
+                if(message.contains(ticket.getKey())){
                     ticketToBuggyClasses
                             .computeIfAbsent(ticket.getKey(), k->new ArrayList<>())
                             .addAll(files);
