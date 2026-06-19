@@ -10,7 +10,6 @@ import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import utils.ConfigManager;
 
-import javax.sound.sampled.Port;
 import java.io.*;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
@@ -23,15 +22,17 @@ public class GitManager {
 
     private GitManager(){}
 
-    private static final String localRepoPath = ConfigManager.getInstance().getProperty("localRepoPath");
-    private static final String isoStrictFormat = "iso-strict";
+    private static final String LOCAL_REPO_PATH = ConfigManager.getInstance().getProperty("localRepoPath");
+    private static final String ISO_STRICT_FORMAT = "iso-strict";
+    private static final String JAVA_EXTENSION = ".java";
+    private static final String DATE_OPTION = "--date=";
 
     public static void cloneRepo() throws IOException, InterruptedException{
         String githubRepoUrl = ConfigManager.getInstance().getProperty("GithubRepoUrl");
-        File repoDir = new File(localRepoPath);
+        File repoDir = new File(LOCAL_REPO_PATH);
         if(!repoDir.exists()){
             System.out.println("Cloning repository...");
-            runCommand(".", "git", "clone", githubRepoUrl, localRepoPath);
+            runCommand(".", "git", "clone", githubRepoUrl, LOCAL_REPO_PATH);
         }
     }
 
@@ -48,14 +49,14 @@ public class GitManager {
                 "--format=tar"
         );
 
-        processBuilder.directory(new File(localRepoPath));
+        processBuilder.directory(new File(LOCAL_REPO_PATH));
         Process process = processBuilder.start();
 
         try (TarArchiveInputStream tarStream = new TarArchiveInputStream(process.getInputStream())){
             TarArchiveEntry entry;
             while((entry = tarStream.getNextEntry()) != null){
                 String name = entry.getName();
-                if(!name.endsWith(".java")) continue;
+                if(!name.endsWith(JAVA_EXTENSION)) continue;
                 byte[] bytes = tarStream.readAllBytes();
                 String content = new String(bytes);
                 contentMap.put(name, content);
@@ -77,7 +78,7 @@ public class GitManager {
                 "--name-only",
                 commit.getHash()
         );
-        pb.directory(new File(localRepoPath));
+        pb.directory(new File(LOCAL_REPO_PATH));
 
         Process process = pb.start();
 
@@ -86,7 +87,7 @@ public class GitManager {
         try(BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))){
             String line;
             while((line = reader.readLine()) != null){
-                if(line.endsWith(".java")){
+                if(line.endsWith(JAVA_EXTENSION)){
                     javaFiles.add(line);
                 }
             }
@@ -100,15 +101,15 @@ public class GitManager {
     public static Commit getFirstCommitOfProject() throws FirstCommitOfProjectNotFoundException,IOException, InterruptedException{
 
         ProcessBuilder processBuilder = new ProcessBuilder(
-          "git",
-          "rev-list",
-          "--reverse",
-          "--pretty=format:%H|%an|%ad|%s",
-          "--date="+isoStrictFormat,
-          "HEAD"
+                "git",
+                "rev-list",
+                "--reverse",
+                "--pretty=format:%H|%an|%ad|%s",
+                DATE_OPTION + ISO_STRICT_FORMAT,
+                "HEAD"
         );
 
-        processBuilder.directory(new File(localRepoPath));
+        processBuilder.directory(new File(LOCAL_REPO_PATH));
 
         Process process = processBuilder.start();
 
@@ -147,11 +148,11 @@ public class GitManager {
                 "git",
                 "log",
                 "--format=%H|%an|%ad|%s",
-                "--date="+isoStrictFormat,
+                DATE_OPTION + ISO_STRICT_FORMAT,
                 "HEAD"
         );
 
-        processBuilder.directory(new File(localRepoPath));
+        processBuilder.directory(new File(LOCAL_REPO_PATH));
         Process process = processBuilder.start();
 
         List<Commit> allCommits = new ArrayList<>();
@@ -160,11 +161,10 @@ public class GitManager {
             String line;
 
             while ((line = bufferedReader.readLine()) != null){
-                line = line.trim();
-                if(line.isEmpty()) continue;
 
-                String[] parts = line.split("\\|", 4);
-                if (parts.length < 4) continue;
+                line = line.trim();
+                String[] parts;
+                if(line.isEmpty() || (parts=line.split("\\|",4)).length < 4) continue;
 
                 try {
                     String hash = parts[0].trim();
@@ -172,7 +172,9 @@ public class GitManager {
                     LocalDateTime date = OffsetDateTime.parse(parts[2].trim()).toLocalDateTime();
                     String message = parts[3].trim();
                     allCommits.add(new Commit(hash,author,date,message));
-                }catch (Exception _){}
+                }catch (Exception _){
+                    //ignore all the commits that are not formattable
+                }
             }
         }
 
@@ -191,7 +193,6 @@ public class GitManager {
             if (lastCommitOfRelease != null){
                 releaseCommitMap.put(release, lastCommitOfRelease);
             }else {
-                //TODO throw an exception
                 throw new CommitOfReleaseNotFoundException();
             }
         }
@@ -237,10 +238,10 @@ public class GitManager {
                 lastCommit.getHash(),
                 "--numstat",
                 "--format=%H|%an|%ad",
-                "--date="+isoStrictFormat
+                DATE_OPTION + ISO_STRICT_FORMAT
         );
 
-        processBuilder.directory(new File(localRepoPath));
+        processBuilder.directory(new File(LOCAL_REPO_PATH));
         Process process = processBuilder.start();
 
         Map<String, List<GitFileChange>> fullHistory = new LinkedHashMap<>();
@@ -269,12 +270,12 @@ public class GitManager {
                     String[] parts = line.split("\\s+",3);
                     String filePath = parts[2].trim();
 
-                    if (!filePath.endsWith(".java")) continue;
+                    if (!filePath.endsWith(JAVA_EXTENSION)) continue;
 
                     GitFileChange change = new GitFileChange(
-                        new Commit(currenHash, currenAuthor, currentDate, null),
-                        parse(parts[0]),
-                        parse(parts[1])
+                            new Commit(currenHash, currenAuthor, currentDate, null),
+                            parse(parts[0]),
+                            parse(parts[1])
                     );
 
                     fullHistory.computeIfAbsent(filePath, k -> new ArrayList<>()).add(change);
@@ -323,7 +324,7 @@ public class GitManager {
                     commit.getHash()
             );
 
-            processBuilder.directory(new File(localRepoPath));
+            processBuilder.directory(new File(LOCAL_REPO_PATH));
             Process process = processBuilder.start();
 
             try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(process.getInputStream()))){
@@ -331,7 +332,7 @@ public class GitManager {
                 String line;
                 while ((line = bufferedReader.readLine())!=null){
                     line = line.trim();
-                    if (!line.endsWith(".java")) continue;
+                    if (!line.endsWith(JAVA_EXTENSION)) continue;
 
                     String[] parts = line.split("\\s+", 4);
                     if (parts.length < 4) continue;
@@ -358,7 +359,7 @@ public class GitManager {
                     "--batch"
             );
 
-            processBuilder2.directory(new File(localRepoPath));
+            processBuilder2.directory(new File(LOCAL_REPO_PATH));
             Process process2 = processBuilder2.start();
 
             Thread writerThread = new Thread(()->{
@@ -444,7 +445,7 @@ public class GitManager {
                 "--grep=" + grepPattern
         );
 
-        processBuilder.directory(new File(localRepoPath));
+        processBuilder.directory(new File(LOCAL_REPO_PATH));
         Process process = processBuilder.start();
 
         Map<String, String> hashToMessage = new HashMap<>();
@@ -462,7 +463,7 @@ public class GitManager {
                     String message = parts[1].trim();
                     hashToMessage.put(currentHash, message);
                     messageToFiles.computeIfAbsent(message, k->new ArrayList<>());
-                }else if (currentHash != null && line.endsWith(".java")){
+                }else if (currentHash != null && line.endsWith(JAVA_EXTENSION)){
                     String message = hashToMessage.get(currentHash);
                     if (message != null){
                         messageToFiles.get(message).add(line);

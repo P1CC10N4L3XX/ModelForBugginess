@@ -111,6 +111,8 @@ public class Main {
 
     }
 
+
+
     private static void printProgress(int current, int total){
         int percent = (int) ((current * 100.0) / total);
 
