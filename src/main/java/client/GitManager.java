@@ -340,61 +340,23 @@ public class GitManager {
         List<ProjectRelease> sortedReleases = releaseCommitMap.keySet().stream()
                 .sorted(Comparator.comparing(ProjectRelease :: getReleaseDate))
                 .toList();
-
-        Map<ProjectRelease, Map<String, String>> releasesBlobToFile = new LinkedHashMap<>();
         Set<String> allBlobs = new LinkedHashSet<>();
-
-        for (ProjectRelease release : sortedReleases){
-            Commit commit = releaseCommitMap.get(release);
-            Map<String, String> blobToFile = new LinkedHashMap<>();
-
-            ProcessBuilder processBuilder = new ProcessBuilder(
-                    GIT,
-                    "ls-tree",
-                    "-r",
-                    commit.getHash()
-            );
-
-            processBuilder.directory(new File(LOCAL_REPO_PATH));
-            Process process = processBuilder.start();
-
-            try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(process.getInputStream()))){
-
-                String line;
-                while ((line = bufferedReader.readLine())!=null){
-                    line = line.trim();
-                    if (!line.endsWith(JAVA_EXTENSION)) continue;
-
-                    String[] parts = line.split("\\s+", 4);
-                    if (parts.length < 4) continue;
-
-                    String blobHash = parts[2].trim();
-                    String filePath = parts[3].trim();
-                    blobToFile.put(blobHash, filePath);
-                    allBlobs.add(blobHash);
-                }
-            }
-
-            process.waitFor();
-            releasesBlobToFile.put(release, blobToFile);
-        }
-
-
+        Map<ProjectRelease, Map<String, String>> releasesBlobToFile = getReleasesBlobToFile(sortedReleases, releaseCommitMap, allBlobs);
 
         Map<String, Integer> blobToLoc = new HashMap<>();
 
         if (!allBlobs.isEmpty()) {
-            ProcessBuilder processBuilder2 = new ProcessBuilder(
+            ProcessBuilder processBuilder = new ProcessBuilder(
                     GIT,
                     "cat-file",
                     "--batch"
             );
 
-            processBuilder2.directory(new File(LOCAL_REPO_PATH));
-            Process process2 = processBuilder2.start();
+            processBuilder.directory(new File(LOCAL_REPO_PATH));
+            Process process = processBuilder.start();
 
             Thread writerThread = new Thread(()->{
-                try (PrintWriter stdin = new PrintWriter(process2.getOutputStream())) {
+                try (PrintWriter stdin = new PrintWriter(process.getOutputStream())) {
                     for (String blobHash : allBlobs) {
                         stdin.println(blobHash);
                     }
@@ -404,7 +366,7 @@ public class GitManager {
 
             writerThread.start();
 
-            try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(process2.getInputStream()))) {
+            try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                 String line;
                 String currentBlob = null;
                 int remainingBytes = 0;
@@ -426,8 +388,6 @@ public class GitManager {
                         if (parts.length >= 3 && parts[1].equals("blob")) {
                             currentBlob = parts[0].trim();
                             remainingBytes = Integer.parseInt(parts[2].trim());
-                            loc = 0;
-
                             if (remainingBytes == 0) {
                                 blobToLoc.put(currentBlob, 0);
                                 currentBlob = null;
@@ -438,7 +398,7 @@ public class GitManager {
             }
 
             writerThread.join();
-            process2.waitFor();
+            process.waitFor();
         }
 
         for (ProjectRelease release : sortedReleases){
@@ -457,6 +417,50 @@ public class GitManager {
 
         return result;
     }
+
+    private static Map<ProjectRelease, Map<String, String>> getReleasesBlobToFile(List<ProjectRelease> releases, Map<ProjectRelease, Commit> releaseCommitMap, Set<String> allBlobs) throws IOException, InterruptedException {
+        Map<ProjectRelease, Map<String, String>> releasesBlobToFile = new LinkedHashMap<>();
+
+        for (ProjectRelease release : releases){
+            Commit commit = releaseCommitMap.get(release);
+            Map<String, String> blobToFile = new LinkedHashMap<>();
+            ProcessBuilder processBuilder = new ProcessBuilder(
+                    GIT,
+                    "ls-tree",
+                    "-r",
+                    commit.getHash()
+            );
+            processBuilder.directory(new File(LOCAL_REPO_PATH));
+            Process process = processBuilder.start();
+            try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(process.getInputStream()))){
+                String line;
+                while ((line=bufferedReader.readLine())!=null){
+                    line = line.trim();
+                    if (!line.endsWith(JAVA_EXTENSION)) continue;
+                    Blob blob = parseBlob(line);
+                    if (blob!=null){
+                        blobToFile.put(blob.blobHash(), blob.filePath());
+                        allBlobs.add(blob.blobHash());
+                    }
+                }
+            }
+            process.waitFor();
+            releasesBlobToFile.put(release, blobToFile);
+        }
+
+        return releasesBlobToFile;
+    }
+
+    private static Blob parseBlob(String line){
+        String[] parts = line.split("\\s+", 4);
+        if (parts.length < 4) return null;
+
+        String blobHash = parts[2].trim();
+        String filePath = parts[3].trim();
+
+        return new Blob(blobHash, filePath);
+    }
+    private record Blob(String blobHash, String filePath){}
 
     public static Map<String, List<String>> getAllBugFixCommits(List<TicketBugRecord> tickets) throws IOException, InterruptedException{
         Map<String, List<String>> messageToFiles = new HashMap<>();
