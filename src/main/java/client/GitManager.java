@@ -8,6 +8,8 @@ import models.ProjectRelease;
 import models.TicketBugRecord;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import utils.ConfigManager;
 
 import java.io.*;
@@ -20,19 +22,23 @@ import static utils.CommandRunner.runCommand;
 
 public class GitManager {
 
-    private GitManager(){}
+    private GitManager(){
+        //empty constructor
+    }
 
     private static final String LOCAL_REPO_PATH = ConfigManager.getInstance().getProperty("localRepoPath");
     private static final String ISO_STRICT_FORMAT = "iso-strict";
     private static final String JAVA_EXTENSION = ".java";
     private static final String DATE_OPTION = "--date=";
+    private static final String GIT = "git";
+    private static final Logger LOGGER = LoggerFactory.getLogger(GitManager.class);
 
     public static void cloneRepo() throws IOException, InterruptedException{
         String githubRepoUrl = ConfigManager.getInstance().getProperty("GithubRepoUrl");
         File repoDir = new File(LOCAL_REPO_PATH);
         if(!repoDir.exists()){
-            System.out.println("Cloning repository...");
-            runCommand(".", "git", "clone", githubRepoUrl, LOCAL_REPO_PATH);
+            LOGGER.info("Cloning repository...");
+            runCommand(".", GIT, "clone", githubRepoUrl, LOCAL_REPO_PATH);
         }
     }
 
@@ -43,7 +49,7 @@ public class GitManager {
 
 
         ProcessBuilder processBuilder = new ProcessBuilder(
-                "git",
+                GIT,
                 "archive",
                 commit.getHash(),
                 "--format=tar"
@@ -72,7 +78,7 @@ public class GitManager {
     public static List<String> getJavaFilesPerCommit(Commit commit) throws IOException, InterruptedException{
 
         ProcessBuilder pb = new ProcessBuilder(
-                "git",
+                GIT,
                 "ls-tree",
                 "-r",
                 "--name-only",
@@ -101,7 +107,7 @@ public class GitManager {
     public static Commit getFirstCommitOfProject() throws FirstCommitOfProjectNotFoundException,IOException, InterruptedException{
 
         ProcessBuilder processBuilder = new ProcessBuilder(
-                "git",
+                GIT,
                 "rev-list",
                 "--reverse",
                 "--pretty=format:%H|%an|%ad|%s",
@@ -145,7 +151,7 @@ public class GitManager {
         Map<ProjectRelease, Commit> releaseCommitMap = new HashMap<>();
 
         ProcessBuilder processBuilder = new ProcessBuilder(
-                "git",
+                GIT,
                 "log",
                 "--format=%H|%an|%ad|%s",
                 DATE_OPTION + ISO_STRICT_FORMAT,
@@ -232,57 +238,9 @@ public class GitManager {
         ProjectRelease lastRelease = sortedReleases.getLast();
         Commit lastCommit = releaseCommitMap.get(lastRelease);
 
-        ProcessBuilder processBuilder = new ProcessBuilder(
-                "git",
-                "log",
-                lastCommit.getHash(),
-                "--numstat",
-                "--format=%H|%an|%ad",
-                DATE_OPTION + ISO_STRICT_FORMAT
-        );
 
-        processBuilder.directory(new File(LOCAL_REPO_PATH));
-        Process process = processBuilder.start();
+        Map<String, List<GitFileChange>> fullHistory = buildFullHistory(lastCommit);
 
-        Map<String, List<GitFileChange>> fullHistory = new LinkedHashMap<>();
-
-        try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(process.getInputStream()))){
-            String line;
-            String currenHash = null;
-            String currenAuthor = null;
-            LocalDateTime currentDate = null;
-
-            while ((line = bufferedReader.readLine())!=null){
-                line = line.trim();
-                if(line.isEmpty()) continue;
-
-                if (line.contains("|")){
-                    String[] parts = line.split("\\|", 3);
-                    if (parts.length < 3) continue;
-                    currenHash = parts[0].trim();
-                    currenAuthor = parts[1].trim();
-                    try{
-                        currentDate = OffsetDateTime.parse(parts[2].trim()).toLocalDateTime();
-                    }catch (Exception _){
-                        currentDate = null;
-                    }
-                }else if (line.matches("\\d+\\s+\\d+\\s+.*") && currentDate != null){
-                    String[] parts = line.split("\\s+",3);
-                    String filePath = parts[2].trim();
-
-                    if (!filePath.endsWith(JAVA_EXTENSION)) continue;
-
-                    GitFileChange change = new GitFileChange(
-                            new Commit(currenHash, currenAuthor, currentDate, null),
-                            parse(parts[0]),
-                            parse(parts[1])
-                    );
-
-                    fullHistory.computeIfAbsent(filePath, k -> new ArrayList<>()).add(change);
-                }
-            }
-        }
-        process.waitFor();
 
         for (ProjectRelease release : sortedReleases){
             LocalDateTime releaseDate = releaseCommitMap.get(release).getCommitDate();
@@ -303,6 +261,72 @@ public class GitManager {
         return result;
     }
 
+    private static Map<String, List<GitFileChange>> buildFullHistory(Commit lastCommit) throws IOException, InterruptedException{
+        ProcessBuilder processBuilder = new ProcessBuilder(
+                GIT,
+                "log",
+                lastCommit.getHash(),
+                "--numstat",
+                "--format=%H|%an|%ad",
+                DATE_OPTION + ISO_STRICT_FORMAT
+        );
+
+        processBuilder.directory(new File(LOCAL_REPO_PATH));
+        Process process = processBuilder.start();
+
+        Map<String, List<GitFileChange>> fullHistory = new LinkedHashMap<>();
+
+        try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(process.getInputStream()))){
+            String line;
+            String currentHash = null;
+            String currenAuthor = null;
+            LocalDateTime currentDate = null;
+
+            while ((line = bufferedReader.readLine())!=null){
+                line = line.trim();
+                if(line.isEmpty()) continue;
+
+                if (line.contains("|")){
+                    String[] parts = line.split("\\|", 3);
+                    if (parts.length < 3) continue;
+                    currentHash = parts[0].trim();
+                    currenAuthor = parts[1].trim();
+                    try{
+                        currentDate = OffsetDateTime.parse(parts[2].trim()).toLocalDateTime();
+                    }catch (Exception _){
+                        currentDate = null;
+                    }
+                    continue;
+                }
+
+                FileChangeEntry entry = parseFileChange(line, currentHash, currenAuthor, currentDate);
+                if (entry != null)
+                    fullHistory.computeIfAbsent(entry.filePath(), k -> new ArrayList<>()).add(entry.change());
+            }
+        }
+        process.waitFor();
+        return fullHistory;
+    }
+
+    private static FileChangeEntry parseFileChange(String line, String hash, String author, LocalDateTime date){
+        if (date == null || !line.matches("\\d+\\s+\\d+\\s+.*")) return null;
+        String[] parts = line.split("\\s+", 3);
+        String filePath = parts[2].trim();
+        if (!filePath.endsWith(JAVA_EXTENSION)) return null;
+
+        GitFileChange change = new GitFileChange(
+                new Commit(hash, author, date, null),
+                parse(parts[0]),
+                parse(parts[1])
+        );
+        return new FileChangeEntry(filePath, change);
+    }
+
+    private record FileChangeEntry(String filePath, GitFileChange change) {}
+
+
+
+
     public static Map<ProjectRelease, Map<String, Integer>> getAllLocForEachRelease(Map<ProjectRelease, Commit> releaseCommitMap) throws IOException, InterruptedException{
         Map<ProjectRelease, Map<String, Integer>> result = new LinkedHashMap<>();
 
@@ -318,7 +342,7 @@ public class GitManager {
             Map<String, String> blobToFile = new LinkedHashMap<>();
 
             ProcessBuilder processBuilder = new ProcessBuilder(
-                    "git",
+                    GIT,
                     "ls-tree",
                     "-r",
                     commit.getHash()
@@ -354,7 +378,7 @@ public class GitManager {
 
         if (!allBlobs.isEmpty()) {
             ProcessBuilder processBuilder2 = new ProcessBuilder(
-                    "git",
+                    GIT,
                     "cat-file",
                     "--batch"
             );
@@ -437,7 +461,7 @@ public class GitManager {
         if (grepPattern.isEmpty()) return messageToFiles;
 
         ProcessBuilder processBuilder = new ProcessBuilder(
-                "git",
+                GIT,
                 "log",
                 "--all",
                 "--name-only",
