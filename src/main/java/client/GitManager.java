@@ -30,6 +30,7 @@ public class GitManager {
     private static final String ISO_STRICT_FORMAT = "iso-strict";
     private static final String JAVA_EXTENSION = ".java";
     private static final String DATE_OPTION = "--date=";
+    @SuppressWarnings("java:S4036") //absolute path not portable for different OS
     private static final String GIT = "git";
     private static final Logger LOGGER = LoggerFactory.getLogger(GitManager.class);
 
@@ -278,44 +279,50 @@ public class GitManager {
 
         try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(process.getInputStream()))){
             String line;
-            String currentHash = null;
-            String currenAuthor = null;
-            LocalDateTime currentDate = null;
+            CommitHeader currentHeader = null;
 
             while ((line = bufferedReader.readLine())!=null){
                 line = line.trim();
                 if(line.isEmpty()) continue;
 
                 if (line.contains("|")){
-                    String[] parts = line.split("\\|", 3);
-                    if (parts.length < 3) continue;
-                    currentHash = parts[0].trim();
-                    currenAuthor = parts[1].trim();
-                    try{
-                        currentDate = OffsetDateTime.parse(parts[2].trim()).toLocalDateTime();
-                    }catch (Exception _){
-                        currentDate = null;
+                    currentHeader = parseCommitHeader(line, currentHeader);
+                } else {
+                    FileChangeEntry entry = parseFileChange(line, currentHeader);
+                    if (entry!=null){
+                        fullHistory.computeIfAbsent(entry.filePath(), k -> new ArrayList<>()).add(entry.change());
                     }
-                    continue;
                 }
-
-                FileChangeEntry entry = parseFileChange(line, currentHash, currenAuthor, currentDate);
-                if (entry != null)
-                    fullHistory.computeIfAbsent(entry.filePath(), k -> new ArrayList<>()).add(entry.change());
             }
         }
         process.waitFor();
         return fullHistory;
     }
 
-    private static FileChangeEntry parseFileChange(String line, String hash, String author, LocalDateTime date){
-        if (date == null || !line.matches("\\d+\\s+\\d+\\s+.*")) return null;
+    private static CommitHeader parseCommitHeader(String line, CommitHeader previousHeader){
+        String[] parts = line.split("\\|",3);
+        if (parts.length < 3) return previousHeader;
+
+        String hash = parts[0].trim();
+        String author = parts[1].trim();
+        LocalDateTime date;
+        try {
+            date = OffsetDateTime.parse(parts[2].trim()).toLocalDateTime();
+        }catch (Exception _){
+            date = null;
+        }
+        return new CommitHeader(hash, author, date);
+    }
+
+    private static FileChangeEntry parseFileChange(String line, CommitHeader header){
+        if (header == null || header.date() == null || !line.matches("\\d+\\s+\\d+\\s+.*")) return null;
+
         String[] parts = line.split("\\s+", 3);
         String filePath = parts[2].trim();
         if (!filePath.endsWith(JAVA_EXTENSION)) return null;
 
         GitFileChange change = new GitFileChange(
-                new Commit(hash, author, date, null),
+                new Commit(header.hash(), header.author(), header.date(), null),
                 parse(parts[0]),
                 parse(parts[1])
         );
@@ -323,7 +330,7 @@ public class GitManager {
     }
 
     private record FileChangeEntry(String filePath, GitFileChange change) {}
-
+    private record CommitHeader(String hash, String author, LocalDateTime date) {}
 
 
 
