@@ -4,6 +4,7 @@ import client.JsonClient;
 import models.ProjectRelease;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import utils.ConfigManager;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -19,11 +20,11 @@ public class GetReleaseInfo {
 
     private GetReleaseInfo(){}
 
-    private static final String projName = "SYNCOPE";
+    private static final String PROJECT_NAME = ConfigManager.getInstance().getProperty("projectName");
 
     public static List<ProjectRelease> run() {
         List<ProjectRelease> releases = new ArrayList<>();
-        String url = "https://issues.apache.org/jira/rest/api/2/project/" + projName;
+        String url = "https://issues.apache.org/jira/rest/api/2/project/" + PROJECT_NAME;
         try {
             JSONObject jsonObject = JsonClient.readJSONObjectFromUrl(url);
             JSONArray versions = jsonObject.getJSONArray("versions");
@@ -56,7 +57,7 @@ public class GetReleaseInfo {
     }
     
     private static void writeCsv(List<ProjectRelease> releases) {
-        String fileName = projName + "_Releases.csv";
+        String fileName = PROJECT_NAME + "_Releases.csv";
         try (PrintWriter writer = new PrintWriter(new File(fileName))) {
             StringBuilder sb = new StringBuilder();
             sb.append("Index,ID,Name,ReleaseDate\n");
