@@ -6,10 +6,12 @@ import net.sourceforge.pmd.lang.LanguageRegistry;
 import net.sourceforge.pmd.reporting.Report;
 import net.sourceforge.pmd.reporting.RuleViolation;
 
+import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -22,6 +24,10 @@ public class PMDManager {
         Map<String, Integer> smellsMap = new HashMap<>();
 
         Path tempDir = Files.createTempDirectory("pmd_analysis_");
+        File file = tempDir.toFile();
+        file.setReadable(true, true);
+        file.setWritable(true, true);
+        file.setExecutable(true, true);
 
         Map<Path, String> tempToOriginal = new HashMap<>();
         try {
@@ -81,11 +87,15 @@ public class PMDManager {
     private static void deleteDirectory(Path dir){
         try {
             Files.walk(dir)
-                    .sorted((a,b) -> b.compareTo(a))
+                    .sorted(Comparator.reverseOrder())
                     .forEach(path -> {
                         try { Files.deleteIfExists(path); }
-                        catch (IOException _){}
+                        catch (IOException _){
+                            //ignore the exception
+                        }
                     });
-        } catch (IOException _){}
+        } catch (IOException _){
+            //ignore the exception
+        }
     }
 }
