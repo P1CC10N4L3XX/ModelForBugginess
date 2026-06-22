@@ -152,7 +152,6 @@ public class GitManager {
     }
 
     public static Map<ProjectRelease, Commit> getLastCommitForEachRelease(List<ProjectRelease> releases) throws IOException, InterruptedException, CommitOfReleaseNotFoundException {
-        Map<ProjectRelease, Commit> releaseCommitMap = new HashMap<>();
 
         ProcessBuilder processBuilder = new ProcessBuilder(
                 GIT,
@@ -173,8 +172,8 @@ public class GitManager {
             while ((line = bufferedReader.readLine()) != null){
 
                 line = line.trim();
-                String[] parts = line.isEmpty() ? null : line.split("\\|");
-                if (parts == null) continue;
+                String[] parts = line.isEmpty() ? null : line.split("\\|", 4);
+                if (parts == null || parts.length < 4) continue;
 
                 try {
                     String hash = parts[0].trim();
@@ -190,12 +189,16 @@ public class GitManager {
 
         process.waitFor();
 
+        return getReleaseCommitMap(allCommits, releases);
+    }
+
+    private static Map<ProjectRelease, Commit> getReleaseCommitMap(List<Commit> allCommits, List<ProjectRelease> releases) throws CommitOfReleaseNotFoundException {
+        Map<ProjectRelease, Commit> releaseCommitMap = new HashMap<>();
         for (ProjectRelease release : releases){
             LocalDateTime releaseDate = release.getReleaseDate();
-
             Commit lastCommitOfRelease = null;
             for (Commit commit : allCommits){
-                if(!commit.getCommitDate().isAfter(releaseDate)){
+                if (!commit.getCommitDate().isAfter(releaseDate)){
                     lastCommitOfRelease = commit;
                     break;
                 }
@@ -206,7 +209,6 @@ public class GitManager {
                 throw new CommitOfReleaseNotFoundException();
             }
         }
-
         return releaseCommitMap;
     }
 
@@ -318,9 +320,9 @@ public class GitManager {
     }
 
     private static FileChangeEntry parseFileChange(String line, CommitHeader header){
-        if (header == null || header.date() == null || !line.matches("\\d+\\s+\\d+\\s+.*")) return null;
-
         String[] parts = line.split("\\s+", 3);
+        if (header == null || header.date() == null || parts.length < 3 || !parts[0].chars().allMatch(Character::isDigit) || !parts[1].chars().allMatch(Character::isDigit)) return null;
+
         String filePath = parts[2].trim();
         if (!filePath.endsWith(JAVA_EXTENSION)) return null;
 
