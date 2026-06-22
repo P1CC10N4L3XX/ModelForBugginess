@@ -5,6 +5,7 @@ import net.sourceforge.pmd.PmdAnalysis;
 import net.sourceforge.pmd.lang.LanguageRegistry;
 import net.sourceforge.pmd.reporting.Report;
 import net.sourceforge.pmd.reporting.RuleViolation;
+import utils.SecureTempDir;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -23,11 +24,7 @@ public class PMDManager {
     public static Map<String, Integer> getAllSmells(Map<String, String> contentMap) throws IOException {
         Map<String, Integer> smellsMap = new HashMap<>();
 
-        Path tempDir = Files.createTempDirectory("pmd_analysis_");
-        File file = tempDir.toFile();
-        file.setReadable(true, true);
-        file.setWritable(true, true);
-        file.setExecutable(true, true);
+        Path tempDir = SecureTempDir.createSecureTempDirectory("pmd_analysis_");
 
         Map<Path, String> tempToOriginal = new HashMap<>();
         try {
