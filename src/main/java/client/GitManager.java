@@ -30,9 +30,12 @@ public class GitManager {
     private static final String ISO_STRICT_FORMAT = "iso-strict";
     private static final String JAVA_EXTENSION = ".java";
     private static final String DATE_OPTION = "--date=";
-    @SuppressWarnings("java:S4036") //absolute path not portable for different OS
     private static final String GIT = "git";
     private static final Logger LOGGER = LoggerFactory.getLogger(GitManager.class);
+
+    private record FileChangeEntry(String filePath, GitFileChange change) {}
+    private record CommitHeader(String hash, String author, LocalDateTime date) {}
+    private record Blob(String blobHash, String filePath){}
 
     public static void cloneRepo() throws IOException, InterruptedException{
         String githubRepoUrl = ConfigManager.getInstance().getProperty("GithubRepoUrl");
@@ -170,8 +173,8 @@ public class GitManager {
             while ((line = bufferedReader.readLine()) != null){
 
                 line = line.trim();
-                String[] parts;
-                if(line.isEmpty() || (parts=line.split("\\|",4)).length < 4) continue;
+                String[] parts = line.isEmpty() ? null : line.split("\\|");
+                if (parts == null) continue;
 
                 try {
                     String hash = parts[0].trim();
@@ -290,7 +293,7 @@ public class GitManager {
                 } else {
                     FileChangeEntry entry = parseFileChange(line, currentHeader);
                     if (entry!=null){
-                        fullHistory.computeIfAbsent(entry.filePath(), k -> new ArrayList<>()).add(entry.change());
+                        fullHistory.computeIfAbsent(entry.filePath(), _ -> new ArrayList<>()).add(entry.change());
                     }
                 }
             }
@@ -329,13 +332,106 @@ public class GitManager {
         return new FileChangeEntry(filePath, change);
     }
 
-    private record FileChangeEntry(String filePath, GitFileChange change) {}
-    private record CommitHeader(String hash, String author, LocalDateTime date) {}
+    private static class BlobParseState{
+        String currenBlob = null;
+        int remainingBytes = 0;
+        int loc = 0;
+
+        void reset(){
+            currenBlob = null;
+            remainingBytes = 0;
+            loc = 0;
+        }
+    }
+
+    private static Map<String, Integer> buildBlobToLoc(Set<String> allBlobs) throws IOException, InterruptedException{
+        if (allBlobs.isEmpty()) return new HashMap<>();
+
+        ProcessBuilder processBuilder = new ProcessBuilder(
+                GIT,
+                "cat-file",
+                "--batch"
+        );
+
+        processBuilder.directory(new File(LOCAL_REPO_PATH));
+        Process process = processBuilder.start();
+
+        Thread writerThread = new Thread(() ->{
+           try (PrintWriter stdin = new PrintWriter(process.getOutputStream())){
+               for (String blobHash : allBlobs){
+                   stdin.println(blobHash);
+               }
+           }
+        });
+        writerThread.start();
+
+        Map<String, Integer> blobToLoc = new HashMap<>();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))){
+            parseBlobOutput(reader, blobToLoc);
+        }
+
+        writerThread.join();
+        process.waitFor();
+        return blobToLoc;
+    }
+
+    private static void parseBlobOutput(BufferedReader reader, Map<String, Integer> blobToLoc) throws IOException{
+        BlobParseState state = new BlobParseState();
+        String line;
+        while ((line = reader.readLine()) != null){
+            if (state.remainingBytes > 0){
+                processContentLine(line, state, blobToLoc);
+            } else {
+                processHeaderLine(line, state, blobToLoc);
+            }
+        }
+    }
+
+
+    private static void processContentLine(String line, BlobParseState state, Map<String, Integer> blobToLoc){
+        state.loc++;
+        state.remainingBytes -= (line.length() + 1);
+        if (state.remainingBytes <= 0){
+            blobToLoc.put(state.currenBlob, state.loc);
+            state.reset();
+        }
+    }
+
+    private static void processHeaderLine(String line, BlobParseState state, Map<String, Integer> blobToLoc){
+        String[] parts = line.trim().split("\\s+");
+        if (parts.length < 3 || !parts[1].equals("blob")) return;
+
+        state.currenBlob = parts[0].trim();
+        state.remainingBytes = Integer.parseInt(parts[2].trim());
+        if (state.remainingBytes == 0){
+            blobToLoc.put(state.currenBlob, 0);
+            state.reset();
+        }
+    }
+
+    private static Map<ProjectRelease, Map<String, Integer>> buildResult(List<ProjectRelease> releases, Map<ProjectRelease, Map<String, String>> releasesBlobToFile, Map<String, Integer> blobToLoc){
+        Map<ProjectRelease, Map<String, Integer>> result = new LinkedHashMap<>();
+        for (ProjectRelease release : releases){
+            result.put(release, buildLocMapForRelease(releasesBlobToFile.get(release), blobToLoc));
+        }
+
+        return result;
+    }
+
+    private static Map<String, Integer> buildLocMapForRelease(Map<String, String> blobToFile, Map<String, Integer> blobToLoc){
+        Map<String, Integer> locMap = new HashMap<>();
+        for (Map.Entry<String, String> entry : blobToFile.entrySet()){
+            Integer loc = blobToLoc.get(entry.getKey());
+            if (loc != null){
+                locMap.put(entry.getValue(), loc);
+            }
+        }
+        return locMap;
+     }
 
 
 
     public static Map<ProjectRelease, Map<String, Integer>> getAllLocForEachRelease(Map<ProjectRelease, Commit> releaseCommitMap) throws IOException, InterruptedException{
-        Map<ProjectRelease, Map<String, Integer>> result = new LinkedHashMap<>();
 
         List<ProjectRelease> sortedReleases = releaseCommitMap.keySet().stream()
                 .sorted(Comparator.comparing(ProjectRelease :: getReleaseDate))
@@ -343,79 +439,9 @@ public class GitManager {
         Set<String> allBlobs = new LinkedHashSet<>();
         Map<ProjectRelease, Map<String, String>> releasesBlobToFile = getReleasesBlobToFile(sortedReleases, releaseCommitMap, allBlobs);
 
-        Map<String, Integer> blobToLoc = new HashMap<>();
+        Map<String, Integer> blobToLoc = buildBlobToLoc(allBlobs);
 
-        if (!allBlobs.isEmpty()) {
-            ProcessBuilder processBuilder = new ProcessBuilder(
-                    GIT,
-                    "cat-file",
-                    "--batch"
-            );
-
-            processBuilder.directory(new File(LOCAL_REPO_PATH));
-            Process process = processBuilder.start();
-
-            Thread writerThread = new Thread(()->{
-                try (PrintWriter stdin = new PrintWriter(process.getOutputStream())) {
-                    for (String blobHash : allBlobs) {
-                        stdin.println(blobHash);
-                    }
-
-                }
-            });
-
-            writerThread.start();
-
-            try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                String line;
-                String currentBlob = null;
-                int remainingBytes = 0;
-                int loc = 0;
-
-                while ((line = bufferedReader.readLine()) != null) {
-                    if (remainingBytes > 0) {
-                        loc++;
-                        remainingBytes -= (line.length() + 1);
-
-                        if (remainingBytes <= 0) {
-                            blobToLoc.put(currentBlob, loc);
-                            currentBlob = null;
-                            loc = 0;
-                            remainingBytes = 0;
-                        }
-                    } else {
-                        String[] parts = line.trim().split("\\s+");
-                        if (parts.length >= 3 && parts[1].equals("blob")) {
-                            currentBlob = parts[0].trim();
-                            remainingBytes = Integer.parseInt(parts[2].trim());
-                            if (remainingBytes == 0) {
-                                blobToLoc.put(currentBlob, 0);
-                                currentBlob = null;
-                            }
-                        }
-                    }
-                }
-            }
-
-            writerThread.join();
-            process.waitFor();
-        }
-
-        for (ProjectRelease release : sortedReleases){
-            Map<String, String> blobToFile = releasesBlobToFile.get(release);
-            Map<String, Integer> locMap = new HashMap<>();
-
-            for (Map.Entry<String, String> entry : blobToFile.entrySet()){
-                Integer loc = blobToLoc.get(entry.getKey());
-                if (loc != null){
-                    locMap.put(entry.getValue(), loc);
-                }
-            }
-
-            result.put(release, locMap);
-        }
-
-        return result;
+        return buildResult(sortedReleases, releasesBlobToFile, blobToLoc);
     }
 
     private static Map<ProjectRelease, Map<String, String>> getReleasesBlobToFile(List<ProjectRelease> releases, Map<ProjectRelease, Commit> releaseCommitMap, Set<String> allBlobs) throws IOException, InterruptedException {
@@ -460,7 +486,6 @@ public class GitManager {
 
         return new Blob(blobHash, filePath);
     }
-    private record Blob(String blobHash, String filePath){}
 
     public static Map<String, List<String>> getAllBugFixCommits(List<TicketBugRecord> tickets) throws IOException, InterruptedException{
         Map<String, List<String>> messageToFiles = new HashMap<>();
@@ -497,7 +522,7 @@ public class GitManager {
                     currentHash = parts[0].trim();
                     String message = parts[1].trim();
                     hashToMessage.put(currentHash, message);
-                    messageToFiles.computeIfAbsent(message, k->new ArrayList<>());
+                    messageToFiles.computeIfAbsent(message, _ ->new ArrayList<>());
                 }else if (currentHash != null && line.endsWith(JAVA_EXTENSION)){
                     String message = hashToMessage.get(currentHash);
                     if (message != null){
