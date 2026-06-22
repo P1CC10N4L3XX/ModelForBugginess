@@ -11,7 +11,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
-import static client.JsonClient.readJSONObjectFromUrl;
 
 public class GetTicketInfo {
 

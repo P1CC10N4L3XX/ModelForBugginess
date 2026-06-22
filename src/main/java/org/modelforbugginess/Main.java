@@ -110,8 +110,11 @@ public class Main {
 
 
     private static void printProgress(int current, int total){
-        int percent = (int) ((current * 100.0) / total);
+        if (!LOGGER.isInfoEnabled()){
+            return;
+        }
 
+        int percent = (int) ((current * 100.0) / total);
         int barLength = 30;
         int filled = (int) (barLength * percent / 100.0);
 
@@ -119,13 +122,13 @@ public class Main {
 
         bar.append("\r[");
         for(int i=0; i<barLength; i++){
-            if(i<filled) bar.append('■');
-            else bar.append(" ");
+            bar.append(i < filled ? '■' : ' ');
         }
-
-        bar.append(percent).append("% (")
+        bar.append("] ")
+                .append(percent).append("% (")
                 .append(current).append("/")
                 .append(total).append(")");
+
         LOGGER.info(bar.toString());
     }
 
