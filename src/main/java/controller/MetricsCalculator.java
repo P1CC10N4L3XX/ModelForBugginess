@@ -22,13 +22,11 @@ public class MetricsCalculator {
         // METRICS FROM RELEASE 0 -> calculated on historyFromStart
         //====================================================================
 
-        Set<String> authorsTotal = new HashSet<>();
         int locTouched = 0;
         int weightedAgeSumTotal = 0;
         int age = 0;
 
         for (GitFileChange change : historyFromStart){
-            authorsTotal.add(change.getCommit().getAuthor());
             locTouched += change.getAdded() + change.getDeleted();
 
 
