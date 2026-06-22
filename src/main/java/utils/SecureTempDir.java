@@ -11,6 +11,9 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Set;
 
 public class SecureTempDir {
+
+    private SecureTempDir(){}
+
     public static Path createSecureTempDirectory(String prefix) throws IOException{
         FileSystem fs = FileSystems.getDefault();
 

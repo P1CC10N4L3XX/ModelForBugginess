@@ -3,8 +3,6 @@ package controller;
 import models.ClassRecord;
 import models.Commit;
 import models.GitFileChange;
-
-import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -13,7 +11,7 @@ public class MetricsCalculator {
 
     private MetricsCalculator(){}
 
-    public static ClassRecord calculateMetrics(String classPath, List<GitFileChange> historyFromStart,List<GitFileChange> historyInRelease,int loc, Commit lastCommitActualRelease) throws IOException, InterruptedException {
+    public static ClassRecord calculateMetrics(String classPath, List<GitFileChange> historyFromStart,List<GitFileChange> historyInRelease,int loc, Commit lastCommitActualRelease){
         ClassRecord classRecord = new ClassRecord();
         classRecord.setLoc(loc);
 

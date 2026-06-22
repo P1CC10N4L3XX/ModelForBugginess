@@ -18,19 +18,21 @@ public class ClassRecord {
     private int changeSetSize;
     private int maxChangeSet;
     private double averageChangeSet;
-    private int LocTouched;
+    private int locTouched;
     private int age;
     private double weightedAge;
     private boolean buggy;
 
-    public ClassRecord(){}
+    public ClassRecord(){
+        // empty constructor
+    }
 
     public int getLocTouched() {
-        return LocTouched;
+        return locTouched;
     }
 
     public void setLocTouched(int locTouched) {
-        LocTouched = locTouched;
+        this.locTouched = locTouched;
     }
 
     public String getRelease() {

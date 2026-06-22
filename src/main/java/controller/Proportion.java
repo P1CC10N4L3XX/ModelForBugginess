@@ -16,9 +16,8 @@ public class Proportion {
             Integer fv = getReleaseIndex(releases, ticket.getFixVersion());
             Integer ov = getOpeningVersion(releases, ticket);
 
-            if(iv == null || fv == null || ov == null) continue;
-            if(fv.equals(ov)) continue;
-            if(iv >= fv) continue;
+            if(iv == null || fv == null || ov == null || fv.equals(ov) || iv >= fv) continue;
+
 
             double p = (double) (fv - iv) / (fv - ov);
             if (p > 0) proportions.add(p);
@@ -32,12 +31,11 @@ public class Proportion {
 
     public static void assignMissingIV(List<ProjectRelease> releases,List<TicketBugRecord> tickets, double p){
         for (TicketBugRecord ticket : tickets){
-            if(ticket.getInjectedVersion() != null) continue;
 
             Integer fv = getReleaseIndex(releases,ticket.getFixVersion());
             Integer ov = getOpeningVersion(releases,ticket);
 
-            if (fv == null || ov == null) continue;
+            if (ticket.getInjectedVersion() != null || fv == null || ov == null) continue;
 
             int ivIndex = (int) Math.max(0, Math.floor(fv - p * (fv - ov)));
 

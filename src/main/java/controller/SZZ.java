@@ -4,11 +4,14 @@ import client.GitManager;
 import models.ProjectRelease;
 import models.TicketBugRecord;
 
+import java.io.IOException;
 import java.util.*;
 
 public class SZZ {
 
-    public static Map<Integer, List<String>> computeBuggyClasses (List<ProjectRelease> releases, List<TicketBugRecord> tickets) throws Exception {
+    private SZZ(){}
+
+    public static Map<Integer, List<String>> computeBuggyClasses (List<ProjectRelease> releases, List<TicketBugRecord> tickets) throws IOException, InterruptedException {
         double p = Proportion.computeP(tickets, releases);
 
         Proportion.assignMissingIV(releases,tickets, p);

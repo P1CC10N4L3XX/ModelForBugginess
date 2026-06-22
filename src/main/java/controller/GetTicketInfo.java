@@ -93,7 +93,9 @@ public class GetTicketInfo {
                 if(earliest == null || name.compareTo(earliest) < 0){
                     earliest = name;
                 }
-            }catch (Exception _){}
+            }catch (Exception _){
+                //ignoring exception
+            }
         }
         return earliest;
     }

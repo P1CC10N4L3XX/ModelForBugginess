@@ -86,25 +86,21 @@ public class Main {
 
 
             for(String classPath : javaClassPaths){
-                try {
-                    List<GitFileChange> historyFromStart = historyMapFromStart.getOrDefault(classPath, Collections.emptyList());
-                    List<GitFileChange> historyInRelease = historyMapInRelease.getOrDefault(classPath, Collections.emptyList());
-                    int loc = locMap.getOrDefault(classPath, 0);
+                List<GitFileChange> historyFromStart = historyMapFromStart.getOrDefault(classPath, Collections.emptyList());
+                List<GitFileChange> historyInRelease = historyMapInRelease.getOrDefault(classPath, Collections.emptyList());
+                int loc = locMap.getOrDefault(classPath, 0);
 
-                    ClassRecord classRecord = MetricsCalculator.calculateMetrics(classPath, historyFromStart, historyInRelease, loc, commitActualRelease);
-                    classRecord.setRelease(releasesToProcess.get(i).getName());
+                ClassRecord classRecord = MetricsCalculator.calculateMetrics(classPath, historyFromStart, historyInRelease, loc, commitActualRelease);
+                classRecord.setRelease(releasesToProcess.get(i).getName());
 
-                    int nSmells = smellsMap.getOrDefault(classPath, 0);
-                    classRecord.setSmells(nSmells);
-                    classRecord.setSmellsDensity(loc == 0 ? 0 : (double)nSmells/loc);
+                int nSmells = smellsMap.getOrDefault(classPath, 0);
+                classRecord.setSmells(nSmells);
+                classRecord.setSmellsDensity(loc == 0 ? 0 : (double)nSmells/loc);
 
-                    List<String> buggyClasses = buggyMap.getOrDefault(i, List.of());
-                    classRecord.setBuggy(buggyClasses.contains(classPath));
+                List<String> buggyClasses = buggyMap.getOrDefault(i, List.of());
+                classRecord.setBuggy(buggyClasses.contains(classPath));
 
-                    writeClassRecordToCSV(classRecord);
-                }catch (IOException | InterruptedException e){
-                    LOGGER.error("Error processing class {}", classPath, e);
-                }
+                writeClassRecordToCSV(classRecord);
             }
         }
 
