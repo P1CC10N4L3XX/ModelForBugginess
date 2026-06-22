@@ -4,6 +4,7 @@ import client.JsonClient;
 import models.TicketBugRecord;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import utils.ConfigManager;
 
 import java.io.*;
 import java.time.LocalDateTime;
@@ -14,7 +15,7 @@ import java.util.List;
 
 public class GetTicketInfo {
 
-    private static final String projName = "SYNCOPE";
+    private static final String PROJECT_NAME = ConfigManager.getInstance().getProperty("projectName");
 
     private GetTicketInfo(){}
 
@@ -25,7 +26,7 @@ public class GetTicketInfo {
         int total = 1;
         
         // JQL query for Syncope defects that are fixed and closed/resolved
-        String jql = "PROJECT=%22" + projName + "%22" +
+        String jql = "PROJECT=%22" + PROJECT_NAME + "%22" +
                 "%20AND%20issuetype=%22Bug%22" +
                 "%20AND%20(status=%22closed%22%20OR%20status=%22resolved%22)" +
                 "%20AND%20resolution=%22Fixed%22";
@@ -69,7 +70,7 @@ public class GetTicketInfo {
                         continue;
                     }
 
-                    tickets.add(new TicketBugRecord(id, key, projName, created, resolutionDate,injectedVersion,fixVersion));
+                    tickets.add(new TicketBugRecord(id, key, PROJECT_NAME, created, resolutionDate,injectedVersion,fixVersion));
                     j++;
                 }
                 i++;
@@ -100,7 +101,7 @@ public class GetTicketInfo {
     }
 
     private static void writeCsv(List<TicketBugRecord> tickets) {
-        String fileName = projName + "_Tickets.csv";
+        String fileName = PROJECT_NAME + "_Tickets.csv";
         try (PrintWriter writer = new PrintWriter(new File(fileName))) {
             StringBuilder sb = new StringBuilder();
             sb.append("ID,Key,Project,CreationDate,FixedDate,InjectedVersion,FixVersion\n");
