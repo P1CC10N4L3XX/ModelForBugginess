@@ -1,22 +1,14 @@
 package org.modelforbugginess;
 
-import client.PMDManager;
-import controller.GetReleaseInfo;
-import controller.GetTicketInfo;
-import client.GitManager;
-import controller.MetricsCalculator;
-import controller.SZZ;
-import models.*;
+
+import controller.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import client.WekaManager;
+import weka.core.Instances;
+import weka.core.converters.CSVLoader;
 
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.PrintWriter;
-
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
+import java.io.*;
 
 public class Main {
     private static final String METRICS_FILE = "Syncope_classes_metrics.csv";
@@ -24,150 +16,28 @@ public class Main {
 
     private Main(){}
 
-    public static void main() throws Exception {
-        LOGGER.info("Starting data collection for project SYNCOPE...");
+    public static void main(String[] args) throws Exception {
 
-        LOGGER.info("Collecting releases...");
-        List<ProjectRelease> releases = GetReleaseInfo.run();
-        LOGGER.info("Total releases found: {}", releases.size());
+        switch (args[0]){
+            case "dataset_creation" -> DatasetCreationController.run();
+            case "model_evaluation" -> {
+                Instances data = loadDataset(METRICS_FILE);
+                data.setClassIndex(data.numAttributes() - 1);
+                LOGGER.info("Dataset loaded: {} instances",data.numInstances());
+                LOGGER.info("Attributes: {}", data.numAttributes());
+                LOGGER.info("Class attributes: {}", data.classAttribute().name());
 
-        LOGGER.info("Collecting tickets...");
-        List<TicketBugRecord> tickets = GetTicketInfo.run();
-        LOGGER.info("Total tickets found: {}", tickets.size());
-
-        LOGGER.info("Collection completed.");
-        LOGGER.info("Results saved to SYNCOPE_Releases.csv and SYNCOPE_Tickets.csv");
-
-        initMetricsFile();
-
-        releases.removeIf(r ->
-                r.getName().toLowerCase().contains("incubating") ||
-                r.getName().toLowerCase().contains(".*-m\\d+.*") ||
-                r.getName().toLowerCase().contains("rc") ||
-                r.getName().toLowerCase().contains("snapshot") ||
-                r.getName().toLowerCase().contains("ea") ||
-                r.getName().toLowerCase().contains("archetype")
-        );
-        int limit = (int)Math.ceil(releases.size() * 0.34);
-        List<ProjectRelease> releasesToProcess = releases.subList(0, limit);
-        GitManager.cloneRepo();
-
-        LOGGER.info("Collecting all git history...");
-
-        Map<Integer, List<String>> buggyMap = SZZ.computeBuggyClasses(releases, tickets);
-        LOGGER.info("Computed buggy classes");
-        Map<ProjectRelease, Commit> commitForEachRelease = GitManager.getLastCommitForEachRelease(releasesToProcess);
-        LOGGER.info("Computed commit for each release");
-        Map<ProjectRelease, Map<String, List<GitFileChange>>> fullHistoryMap = GitManager.getFullHistoryForEachRelease(commitForEachRelease);
-        LOGGER.info("Computed fullHistoryMap");
-        Map<ProjectRelease, Map<String, Integer>> locForEachRelease = GitManager.getAllLocForEachRelease(commitForEachRelease);
-        LOGGER.info("Computed all locs");
-
-        Commit firstCommitOfProject = GitManager.getFirstCommitOfProject();
-
-
-        LOGGER.info("All history from git collected");
-
-        LOGGER.info("Number of releases to process: {}", releasesToProcess.size());
-
-
-        for(int i = 0; i<releasesToProcess.size(); i++){
-            printProgress(i, releasesToProcess.size());
-
-
-            Commit commitActualRelease = commitForEachRelease.get(releasesToProcess.get(i));
-            Commit commitPrevRelease = i > 0 ? commitForEachRelease.get(releasesToProcess.get(i-1)) : firstCommitOfProject;
-            List<String> javaClassPaths = GitManager.getJavaFilesPerCommit(commitActualRelease);
-            Map<String, List<GitFileChange>> historyMapFromStart = fullHistoryMap.get(releasesToProcess.get(i));
-            Map<String, List<GitFileChange>> historyMapInRelease = GitManager.getHistoryInRelease(commitPrevRelease, commitActualRelease, historyMapFromStart);
-            Map<String, Integer> locMap = locForEachRelease.get(releasesToProcess.get(i));
-            Map<String, String> contentMap = GitManager.getAllFileContentAtCommit(commitActualRelease);
-            Map<String, Integer> smellsMap = PMDManager.getAllSmells(contentMap);
-
-
-            for(String classPath : javaClassPaths){
-                List<GitFileChange> historyFromStart = historyMapFromStart.getOrDefault(classPath, Collections.emptyList());
-                List<GitFileChange> historyInRelease = historyMapInRelease.getOrDefault(classPath, Collections.emptyList());
-                int loc = locMap.getOrDefault(classPath, 0);
-
-                ClassRecord classRecord = MetricsCalculator.calculateMetrics(classPath, historyFromStart, historyInRelease, loc, commitActualRelease);
-                classRecord.setRelease(releasesToProcess.get(i).getName());
-
-                int nSmells = smellsMap.getOrDefault(classPath, 0);
-                classRecord.setSmells(nSmells);
-                classRecord.setSmellsDensity(loc == 0 ? 0 : (double)nSmells/loc);
-
-                List<String> buggyClasses = buggyMap.getOrDefault(i, List.of());
-                classRecord.setBuggy(buggyClasses.contains(classPath));
-
-                writeClassRecordToCSV(classRecord);
+                WekaManager wekaManager = new WekaManager(data);
+                wekaManager.evaluate();
             }
-        }
-
-
-    }
-
-
-
-    private static void printProgress(int current, int total){
-        if (!LOGGER.isInfoEnabled()){
-            return;
-        }
-
-        int percent = (int) ((current * 100.0) / total);
-        int barLength = 30;
-        int filled = (int) (barLength * percent / 100.0);
-
-        StringBuilder bar = new StringBuilder();
-
-        bar.append("\r[");
-        for(int i=0; i<barLength; i++){
-            bar.append(i < filled ? '■' : ' ');
-        }
-        bar.append("] ")
-                .append(percent).append("% (")
-                .append(current).append("/")
-                .append(total).append(")");
-
-        LOGGER.info(bar.toString());
-    }
-
-    private static void initMetricsFile() {
-        try (PrintWriter writer = new PrintWriter(METRICS_FILE)) {
-            writer.println("release,className,smells,smellsDensity,loc,numberRevision,numberDefectedVersion,numberAuthors,locAuthors,maxOverRevisionLOCAdded,averageLOCAddedPerRevision,churn,maxChurn,averageChurn,changeSetSize,maxChangeSet,averageChangeSet,LocTouched,age,weightedAge,buggy");
-        } catch (IOException e) {
-            LOGGER.error("Error initializing metrics file", e);
+            default -> LOGGER.info("Invalid arg passed to main");
         }
     }
 
-    private static void writeClassRecordToCSV(ClassRecord classRecord) {
-        try (FileWriter fw = new FileWriter(METRICS_FILE, true);
-             PrintWriter writer = new PrintWriter(fw)) {
-
-            writer.print(classRecord.getRelease() + ",");
-            writer.print(classRecord.getClassName() + ",");
-            writer.print(classRecord.getSmells() + ",");
-            writer.print(classRecord.getSmellsDensity() + ",");
-            writer.print(classRecord.getLoc() + ",");
-            writer.print(classRecord.getNumberRevision() + ",");
-            writer.print(classRecord.getNumberAuthors() + ",");
-            writer.print(classRecord.getLocAuthors() + ",");
-            writer.print(classRecord.getMaxOverRevisionLOCAdded() + ",");
-            writer.print(classRecord.getAverageLOCAddedPerRevision() + ",");
-            writer.print(classRecord.getChurn() + ",");
-            writer.print(classRecord.getMaxChurn() + ",");
-            writer.print(classRecord.getAverageChurn() + ",");
-            writer.print(classRecord.getChangeSetSize() + ",");
-            writer.print(classRecord.getMaxChangeSet() + ",");
-            writer.print(classRecord.getAverageChangeSet() + ",");
-            writer.print(classRecord.getLocTouched() + ",");
-            writer.print(classRecord.getAge() + ",");
-            writer.print(classRecord.getWeightedAge() + ",");
-            writer.println(classRecord.isBuggy() ? "yes" : "no");
-
-        } catch (IOException e) {
-            LOGGER.error("Error writing CSV record for class {}", classRecord.getClassName(), e);
-        }
+    private static Instances loadDataset(String path) throws IOException {
+        CSVLoader loader = new CSVLoader();
+        loader.setSource(new File(path));
+        return loader.getDataSet();
     }
 
 }

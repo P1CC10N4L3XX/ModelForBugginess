@@ -1,7 +1,7 @@
 <configuration>
 
     <!-- ===================== -->
-    <!-- CONSOLE (tuo progetto) -->
+    <!--        CONSOLE        -->
     <!-- ===================== -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
@@ -10,7 +10,7 @@
     </appender>
 
     <!-- ===================== -->
-    <!-- FILE (PMD) -->
+    <!--        FILE (PMD)     -->
     <!-- ===================== -->
     <appender name="PMD_FILE" class="ch.qos.logback.core.FileAppender">
         <file>pmd-analysis.log</file>
@@ -21,9 +21,6 @@
         </encoder>
     </appender>
 
-    <!-- ===================== -->
-    <!-- ROOT LOGGER (TUO PROGETTO) -->
-    <!-- ===================== -->
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>
     </root>
@@ -34,5 +31,6 @@
     <logger name="net.sourceforge.pmd" level="INFO" additivity="false">
         <appender-ref ref="PMD_FILE"/>
     </logger>
+
 
 </configuration>
