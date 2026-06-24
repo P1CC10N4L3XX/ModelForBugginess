@@ -3,6 +3,8 @@ package utils;
 import org.slf4j.Logger;
 
 public class ProgressBar {
+    private ProgressBar(){}
+
     public static void printProgress(int current, int total, Logger logger){
         if (!logger.isInfoEnabled()){
             return;

@@ -27,7 +27,7 @@ import java.util.Random;
 
 public class WekaManager {
     private final Instances data;
-    private final Logger LOGGER = LoggerFactory.getLogger(WekaManager.class);
+    private final Logger logger = LoggerFactory.getLogger(WekaManager.class);
 
     private static final String[] CLASSIFIER_NAMES = {
             "RandomForest",
@@ -48,7 +48,7 @@ public class WekaManager {
 
         for (String classifierName : CLASSIFIER_NAMES){
             for (String balancingName : BALANCING_NAMES){
-                LOGGER.info("Evaluating: {} with balancing: {}",classifierName, balancingName);
+                logger.info("Evaluating: {} with balancing: {}",classifierName, balancingName);
 
                 Classifier classifier = buildClassifier(classifierName, balancingName);
                 ClassifierMetrics classifierMetrics = runTenTimesTenFold(classifier);
@@ -58,7 +58,7 @@ public class WekaManager {
             }
         }
         writer.close();
-        LOGGER.info("Results saved to Milestone2_Results.csv");
+        logger.info("Results saved to Milestone2_Results.csv");
     }
 
     private Classifier buildClassifier(String classifierName, String balancingName){

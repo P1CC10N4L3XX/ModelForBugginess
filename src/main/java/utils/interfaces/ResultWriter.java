@@ -1,6 +1,5 @@
 package utils.interfaces;
 
-import models.ClassifierMetrics;
 
 import java.io.FileWriter;
 import java.io.IOException;
@@ -10,7 +9,7 @@ public abstract class ResultWriter<T> {
 
     protected PrintWriter writer;
 
-    public ResultWriter(String fileName) throws IOException {
+    protected ResultWriter(String fileName) throws IOException {
         this.writer = new PrintWriter(new FileWriter(fileName));
     }
 
