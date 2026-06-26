@@ -1,16 +1,15 @@
 package controller;
 
-import client.WekaManager;
+
+import client.WhatIfClassifier;
 import models.MetricCorrelations;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import utils.DatasetLoader;
 import utils.WhatIfTableWriter;
 import utils.interfaces.ResultWriter;
-import weka.classifiers.Classifier;
 import weka.core.Instances;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -39,17 +38,18 @@ public class WhatIfController {
         LOGGER.info("C (NSmells = 0 original): {} instances",c.numInstances());
 
         LOGGER.info("Training classifier on A...");
-        Classifier classifier = WekaManager.train(datasetA);
+        WhatIfClassifier classifier = new WhatIfClassifier("RandomForest", "Oversampling");
+        classifier.train(datasetA);
         LOGGER.info("Training completed");
 
         LOGGER.info("Predictions on A...");
-        List<String> predictionsA = WekaManager.predict(classifier, datasetA);
+        List<String> predictionsA = classifier.predict(datasetA);
         LOGGER.info("Predictions on B+...");
-        List<String> predictionsBPlus = WekaManager.predict(classifier, bPlus);
+        List<String> predictionsBPlus = classifier.predict(bPlus);
         LOGGER.info("Predictions on B...");
-        List<String> predictionsB = WekaManager.predict(classifier, b);
+        List<String> predictionsB = classifier.predict(b);
         LOGGER.info("Predictions on C...");
-        List<String> predictionsC = WekaManager.predict(classifier, c);
+        List<String> predictionsC = classifier.predict(c);
         long buggyA = countBuggy(predictionsA);
         long buggyBPlus = countBuggy(predictionsBPlus);
         long buggyB = countBuggy(predictionsB);

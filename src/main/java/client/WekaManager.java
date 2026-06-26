@@ -16,7 +16,6 @@ import weka.classifiers.meta.FilteredClassifier;
 
 
 import weka.classifiers.trees.RandomForest;
-import weka.core.Instance;
 import weka.core.Instances;
 import weka.filters.Filter;
 import weka.filters.supervised.attribute.AttributeSelection;
@@ -24,8 +23,6 @@ import weka.filters.supervised.instance.Resample;
 import weka.filters.supervised.instance.SpreadSubsample;
 
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Random;
 
 public class WekaManager {
@@ -43,48 +40,6 @@ public class WekaManager {
             "Oversampling",
             "Undersampling"
     };
-
-    public static Classifier train(Instances datasetA) throws Exception {
-        datasetA.setClassIndex(datasetA.numAttributes() - 1);
-        int classIndex = datasetA.classAttribute().indexOfValue("yes");
-
-        RandomForest randomForest = new RandomForest();
-        randomForest.setNumIterations(20);
-        randomForest.setMaxDepth(8);
-        randomForest.setBagSizePercent(50);
-        randomForest.setNumExecutionSlots(1);
-
-        Resample resample = new Resample();
-        resample.setNoReplacement(false);
-        resample.setBiasToUniformClass(1.0);
-
-        FilteredClassifier fc = new FilteredClassifier();
-        fc.setFilter(resample);
-        fc.setClassifier(randomForest);
-
-        fc.buildClassifier(datasetA);
-        return fc;
-    }
-
-    public static List<String> predict(Classifier trainedClassifier,Instances dataset) throws Exception {
-        List<String> predictions = new ArrayList<>();
-        for (int i=0; i<dataset.numInstances(); i++){
-            Instance instance = dataset.instance(i);
-            double predicted = trainedClassifier.classifyInstance(instance);
-            predictions.add(dataset.classAttribute().value((int)predicted));
-        }
-        return predictions;
-    }
-
-    public static List<Double> predictProbabilities(Classifier trainedClassifier,Instances dataset, int classIndex) throws Exception {
-        List<Double> probabilities = new ArrayList<>();
-        for (int i=0; i<dataset.numInstances(); i++){
-            double[] dist = trainedClassifier.distributionForInstance(dataset.instance(i));
-            probabilities.add(dist[classIndex]);
-        }
-
-        return probabilities;
-    }
 
     public void evaluate() throws Exception {
         String filePath = "classifier_metrics.csv";
@@ -122,7 +77,7 @@ public class WekaManager {
         return Filter.useFilter(instances, fs);
     }
 
-    private Classifier buildClassifier(String classifierName, String balancingName){
+    public static Classifier buildClassifier(String classifierName, String balancingName){
         Classifier base = getBaseClassifier(classifierName);
 
         if (balancingName.equals("None")){
@@ -138,7 +93,7 @@ public class WekaManager {
         return fcWithBalancing;
     }
 
-    private Classifier getBaseClassifier(String name){
+    private static Classifier getBaseClassifier(String name){
         return switch (name){
             case "RandomForest" -> {
                 RandomForest randomForest = new RandomForest();
@@ -154,7 +109,7 @@ public class WekaManager {
         };
     }
 
-    private Filter getBalancingFilter(String name){
+    private static Filter getBalancingFilter(String name){
         return switch (name){
             case "Oversampling" -> {
                 Resample resample = new Resample();
