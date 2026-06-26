@@ -16,6 +16,8 @@ import java.util.Map;
 
 public class WhatIfController {
 
+    private WhatIfController(){}
+
     private static final Logger LOGGER = LoggerFactory.getLogger(WhatIfController.class);
     private static final String DATASET_PATH = "Syncope_classes_metrics.csv";
     private static final String WHAT_IF_TABLE_PATH = "what_if_table.csv";

@@ -73,7 +73,8 @@ public class CorrelationCalculator {
 
     private double pearson(double[] x, double[] y) {
         int n = x.length;
-        double meanX = 0, meanY = 0;
+        double meanX = 0;
+        double meanY = 0;
         for (int i=0; i<n; i++){
             meanX += x[i];
             meanY += y[i];
@@ -81,7 +82,9 @@ public class CorrelationCalculator {
         meanX /= n;
         meanY /= n;
 
-        double num=0, denX = 0, denY = 0;
+        double num=0;
+        double denX = 0;
+        double denY = 0;
         for (int i=0; i<n; i++){
             double dx = x[i] - meanX;
             double dy = y[i] - meanY;
