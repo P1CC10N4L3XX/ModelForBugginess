@@ -5,6 +5,7 @@ import controller.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import client.WekaManager;
+import utils.DatasetLoader;
 import weka.core.Instances;
 import weka.core.converters.CSVLoader;
 
@@ -21,7 +22,7 @@ public class Main {
         switch (args[0]){
             case "dataset_creation" -> DatasetCreationController.run();
             case "model_evaluation" -> {
-                Instances data = loadDataset(METRICS_FILE);
+                Instances data = DatasetLoader.loadCsv(METRICS_FILE);
                 data.setClassIndex(data.numAttributes() - 1);
                 LOGGER.info("Dataset loaded: {} instances",data.numInstances());
                 LOGGER.info("Attributes: {}", data.numAttributes());
@@ -30,14 +31,9 @@ public class Main {
                 WekaManager wekaManager = new WekaManager(data);
                 wekaManager.evaluate();
             }
+            case "what_if_analysis" -> WhatIfController.run();
             default -> LOGGER.info("Invalid arg passed to main");
         }
-    }
-
-    private static Instances loadDataset(String path) throws IOException {
-        CSVLoader loader = new CSVLoader();
-        loader.setSource(new File(path));
-        return loader.getDataSet();
     }
 
 }

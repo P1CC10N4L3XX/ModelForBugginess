@@ -38,6 +38,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/what_if_table.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
       </map>
     </option>
   </component>

@@ -6,8 +6,8 @@ import org.slf4j.LoggerFactory;
 import utils.ClassifierMetricsWriter;
 
 import utils.interfaces.ResultWriter;
-import weka.attributeSelection.BestFirst;
 import weka.attributeSelection.CfsSubsetEval;
+import weka.attributeSelection.GreedyStepwise;
 import weka.classifiers.Classifier;
 import weka.classifiers.Evaluation;
 import weka.classifiers.bayes.NaiveBayes;
@@ -16,6 +16,7 @@ import weka.classifiers.meta.FilteredClassifier;
 
 
 import weka.classifiers.trees.RandomForest;
+import weka.core.Instance;
 import weka.core.Instances;
 import weka.filters.Filter;
 import weka.filters.supervised.attribute.AttributeSelection;
@@ -23,6 +24,8 @@ import weka.filters.supervised.instance.Resample;
 import weka.filters.supervised.instance.SpreadSubsample;
 
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 
 public class WekaManager {
@@ -41,53 +44,110 @@ public class WekaManager {
             "Undersampling"
     };
 
+    public static Classifier train(Instances datasetA) throws Exception {
+        datasetA.setClassIndex(datasetA.numAttributes() - 1);
+        int classIndex = datasetA.classAttribute().indexOfValue("yes");
+
+        RandomForest randomForest = new RandomForest();
+        randomForest.setNumIterations(20);
+        randomForest.setMaxDepth(8);
+        randomForest.setBagSizePercent(50);
+        randomForest.setNumExecutionSlots(1);
+
+        Resample resample = new Resample();
+        resample.setNoReplacement(false);
+        resample.setBiasToUniformClass(1.0);
+
+        FilteredClassifier fc = new FilteredClassifier();
+        fc.setFilter(resample);
+        fc.setClassifier(randomForest);
+
+        fc.buildClassifier(datasetA);
+        return fc;
+    }
+
+    public static List<String> predict(Classifier trainedClassifier,Instances dataset) throws Exception {
+        List<String> predictions = new ArrayList<>();
+        for (int i=0; i<dataset.numInstances(); i++){
+            Instance instance = dataset.instance(i);
+            double predicted = trainedClassifier.classifyInstance(instance);
+            predictions.add(dataset.classAttribute().value((int)predicted));
+        }
+        return predictions;
+    }
+
+    public static List<Double> predictProbabilities(Classifier trainedClassifier,Instances dataset, int classIndex) throws Exception {
+        List<Double> probabilities = new ArrayList<>();
+        for (int i=0; i<dataset.numInstances(); i++){
+            double[] dist = trainedClassifier.distributionForInstance(dataset.instance(i));
+            probabilities.add(dist[classIndex]);
+        }
+
+        return probabilities;
+    }
+
     public void evaluate() throws Exception {
         String filePath = "classifier_metrics.csv";
         ResultWriter<ClassifierMetrics> writer = new ClassifierMetricsWriter(filePath);
         writer.writeHeader();
+        logger.info("Applying feature selection once on full dataset...");
+        Instances reducedData = applyFeatureSelection(data);
+        logger.info("Feature selection done. Attributes reduced: {} -> {}", data.numAttributes(), reducedData.numAttributes());
 
         for (String classifierName : CLASSIFIER_NAMES){
             for (String balancingName : BALANCING_NAMES){
                 logger.info("Evaluating: {} with balancing: {}",classifierName, balancingName);
 
                 Classifier classifier = buildClassifier(classifierName, balancingName);
-                ClassifierMetrics classifierMetrics = runTenTimesTenFold(classifier);
+                ClassifierMetrics classifierMetrics = runTenTimesTenFold(classifier, reducedData);
                 classifierMetrics.setClassifier(classifierName);
                 classifierMetrics.setBalancing(balancingName);
                 writer.writeResult(classifierMetrics);
             }
         }
         writer.close();
-        logger.info("Results saved to Milestone2_Results.csv");
+        logger.info("Results saved to {}", filePath);
+    }
+
+    private Instances applyFeatureSelection(Instances instances) throws Exception {
+        AttributeSelection fs = new AttributeSelection();
+        CfsSubsetEval eval = new CfsSubsetEval();
+        GreedyStepwise search = new GreedyStepwise();
+        search.setSearchBackwards(false);
+
+        fs.setEvaluator(eval);
+        fs.setSearch(search);
+        fs.setInputFormat(instances);
+
+        return Filter.useFilter(instances, fs);
     }
 
     private Classifier buildClassifier(String classifierName, String balancingName){
         Classifier base = getBaseClassifier(classifierName);
-        AttributeSelection featureSelection = new AttributeSelection();
-        CfsSubsetEval eval = new CfsSubsetEval();
-        BestFirst search = new BestFirst();
-        featureSelection.setEvaluator(eval);
-        featureSelection.setSearch(search);
-
-        FilteredClassifier fcWithFS = new FilteredClassifier();
-        fcWithFS.setFilter(featureSelection);
-        fcWithFS.setClassifier(base);
 
         if (balancingName.equals("None")){
-            return fcWithFS;
+            return base;
         }
 
         Filter balancingFilter = getBalancingFilter(balancingName);
         FilteredClassifier fcWithBalancing = new FilteredClassifier();
+
         fcWithBalancing.setFilter(balancingFilter);
-        fcWithBalancing.setClassifier(fcWithFS);
+        fcWithBalancing.setClassifier(base);
 
         return fcWithBalancing;
     }
 
     private Classifier getBaseClassifier(String name){
         return switch (name){
-            case "RandomForest" -> new RandomForest();
+            case "RandomForest" -> {
+                RandomForest randomForest = new RandomForest();
+                randomForest.setNumIterations(20);
+                randomForest.setMaxDepth(8);
+                randomForest.setNumExecutionSlots(1);
+                randomForest.setBagSizePercent(50);
+                yield randomForest;
+            }
             case "NaiveBayes" -> new NaiveBayes();
             case "IBk" -> new IBk();
             default -> throw new IllegalArgumentException("Unknown classifier:" + name);
@@ -111,7 +171,7 @@ public class WekaManager {
         };
     }
 
-    private ClassifierMetrics runTenTimesTenFold(Classifier classifier) throws Exception {
+    private ClassifierMetrics runTenTimesTenFold(Classifier classifier, Instances instances) throws Exception {
         int numRuns = 10;
         int numFolds = 10;
 
@@ -119,7 +179,8 @@ public class WekaManager {
         double totalRecall = 0;
         double totalAUC = 0;
         double totalKappa = 0;
-        ClassifierMetrics classifierMetrics = new ClassifierMetrics();
+
+        int classIndex = instances.classAttribute().indexOfValue("yes");
 
         for (int run = 0; run < numRuns; run++){
             Instances shuffled = new Instances(data);
@@ -133,13 +194,14 @@ public class WekaManager {
                     numFolds,
                     new Random(run)
             );
-            int classIndex = data.classAttribute().indexOfValue("yes");
 
             totalPrecision += evaluation.precision(classIndex);
             totalRecall += evaluation.recall(classIndex);
             totalAUC += evaluation.areaUnderROC(classIndex);
             totalKappa += evaluation.kappa();
         }
+
+        ClassifierMetrics classifierMetrics = new ClassifierMetrics();
 
         classifierMetrics.setPrecision(totalPrecision / numRuns);
         classifierMetrics.setRecall(totalRecall / numRuns);

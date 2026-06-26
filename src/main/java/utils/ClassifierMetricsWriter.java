@@ -23,6 +23,6 @@ public class ClassifierMetricsWriter extends ResultWriter<ClassifierMetrics> {
         writer.print(classifierMetrics.getPrecision() + ",");
         writer.print(classifierMetrics.getRecall() + ",");
         writer.print(classifierMetrics.getAuc() + ",");
-        writer.print(classifierMetrics.getKappa() + ",");
+        writer.print(classifierMetrics.getKappa() + "\n");
     }
 }
