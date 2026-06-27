@@ -21,6 +21,8 @@ public class ClassesRankerController {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClassesRankerController.class);
     private static final String RANKED_CLASSES_PATH = "ranked_classes.csv";
 
+    private ClassesRankerController(){}
+
     public static void run() throws IOException, InterruptedException, CommitOfReleaseNotFoundException {
 
         LOGGER.info("Collecting releases...");

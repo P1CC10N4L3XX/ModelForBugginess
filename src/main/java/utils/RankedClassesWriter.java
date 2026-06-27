@@ -4,7 +4,6 @@ import models.ClassRecord;
 import utils.interfaces.ResultWriter;
 
 import java.io.IOException;
-import java.util.Locale;
 
 public class RankedClassesWriter extends ResultWriter<ClassRecord> {
 
