@@ -32,6 +32,7 @@ public class Main {
                 wekaManager.evaluate();
             }
             case "what_if_analysis" -> WhatIfController.run();
+            case "rank_classes" -> ClassesRankerController.run();
             default -> LOGGER.info("Invalid arg passed to main");
         }
     }

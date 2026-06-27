@@ -18,6 +18,9 @@ public class ClassRecord {
     private int changeSetSize;
     private int maxChangeSet;
     private double averageChangeSet;
+    private int cyclomaticComplexity;
+    private int numberPublicMethods;
+
     private int locTouched;
     private int age;
     private double weightedAge;
@@ -186,6 +189,22 @@ public class ClassRecord {
 
     public void setBuggy(boolean buggy) {
         this.buggy = buggy;
+    }
+
+    public int getCyclomaticComplexity() {
+        return cyclomaticComplexity;
+    }
+
+    public void setCyclomaticComplexity(int cyclomaticComplexity) {
+        this.cyclomaticComplexity = cyclomaticComplexity;
+    }
+
+    public int getNumberPublicMethods() {
+        return numberPublicMethods;
+    }
+
+    public void setNumberPublicMethods(int numberPublicMethods) {
+        this.numberPublicMethods = numberPublicMethods;
     }
 }
 

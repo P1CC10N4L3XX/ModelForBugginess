@@ -5,16 +5,13 @@ import client.PMDManager;
 import exceptions.CommitOfReleaseNotFoundException;
 import exceptions.FirstCommitOfProjectNotFoundException;
 import models.*;
-import org.modelforbugginess.Main;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import utils.ClassMetricsWriter;
 import utils.ProgressBar;
 import utils.interfaces.ResultWriter;
 
-import java.io.FileWriter;
 import java.io.IOException;
-import java.io.PrintWriter;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
