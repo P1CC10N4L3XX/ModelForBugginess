@@ -13,7 +13,7 @@ public class ClassMetricsWriter extends ResultWriter<ClassRecord> {
 
     @Override
     public void writeHeader() {
-        writer.println("release,className,smells,smellsDensity,loc,numberRevision,numberAuthors,locAuthors,maxOverRevisionLOCAdded,averageLOCAddedPerRevision,churn,maxChurn,averageChurn,changeSetSize,maxChangeSet,averageChangeSet,LocTouched,age,weightedAge,buggy");
+        writer.println("release,className,smells,smellsDensity,cyclomaticComplexity,nPublicMethods,loc,numberRevision,numberAuthors,locAuthors,maxOverRevisionLOCAdded,averageLOCAddedPerRevision,churn,maxChurn,averageChurn,changeSetSize,maxChangeSet,averageChangeSet,LocTouched,age,weightedAge,buggy");
     }
 
     @Override
@@ -22,6 +22,8 @@ public class ClassMetricsWriter extends ResultWriter<ClassRecord> {
         writer.print(classRecord.getClassName() + ",");
         writer.print(classRecord.getSmells() + ",");
         writer.print(classRecord.getSmellsDensity() + ",");
+        writer.print(classRecord.getCyclomaticComplexity() + ",");
+        writer.print(classRecord.getNumberPublicMethods() + ",");
         writer.print(classRecord.getLoc() + ",");
         writer.print(classRecord.getNumberRevision() + ",");
         writer.print(classRecord.getNumberAuthors() + ",");

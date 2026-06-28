@@ -83,6 +83,8 @@ public class DatasetCreationController {
             Map<String, Integer> locMap = locForEachRelease.get(releasesToProcess.get(i));
             Map<String, String> contentMap = GitManager.getAllFileContentAtCommit(commitActualRelease);
             Map<String, Integer> smellsMap = PMDManager.getAllSmells(contentMap);
+            Map<String, Integer> cyclomaticComplexityMap = PMDManager.getCyclomaticComplexityPerFile(contentMap);
+            Map<String, Integer> publicMethodsMap = PMDManager.getPublicMethodsCountPerFile(contentMap);
 
 
             for(String classPath : javaClassPaths){
@@ -94,9 +96,12 @@ public class DatasetCreationController {
                 classRecord.setRelease(releasesToProcess.get(i).getName());
 
                 int nSmells = smellsMap.getOrDefault(classPath, 0);
+                int cyclomaticComplexity = cyclomaticComplexityMap.getOrDefault(classPath, 0);
+                int nPublicMethods = publicMethodsMap.getOrDefault(classPath, 0);
                 classRecord.setSmells(nSmells);
                 classRecord.setSmellsDensity(loc == 0 ? 0 : (double)nSmells/loc);
-
+                classRecord.setNumberPublicMethods(nPublicMethods);
+                classRecord.setCyclomaticComplexity(cyclomaticComplexity);
                 List<String> buggyClasses = buggyMap.getOrDefault(i, List.of());
                 classRecord.setBuggy(buggyClasses.contains(classPath));
 
