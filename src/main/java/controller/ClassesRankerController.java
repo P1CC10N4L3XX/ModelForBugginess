@@ -50,6 +50,8 @@ public class ClassesRankerController {
                 );
         Map<String, Integer> cyclomaticComplexityMap = PMDManager.getCyclomaticComplexityPerFile(contentMap);
         Map<String, Integer> publicMethodsMap = PMDManager.getPublicMethodsCountPerFile(contentMap);
+        Map<ProjectRelease, Map<String, Integer>> locForEachRelease = GitManager.getAllLocForEachRelease(commitForEachRelease);
+        Map<String, Integer> locMap = locForEachRelease.get(lastRelease);
         LOGGER.info("Git history collected");
 
         LOGGER.info("Creating {}", RANKED_CLASSES_PATH);
@@ -59,7 +61,8 @@ public class ClassesRankerController {
         for (Map.Entry<String, Integer> entry : sortedSmellsMap.entrySet()){
             int cc = cyclomaticComplexityMap.getOrDefault(entry.getKey(), 0);
             int publicMethods = publicMethodsMap.getOrDefault(entry.getKey(), 0);
-            if (cc < 10 || publicMethods < 10 || entry.getKey().contains("/test/") || entry.getValue() == 0) continue;
+            int loc = locMap.getOrDefault(entry.getKey(), 0);
+            if (cc < 10 || publicMethods < 5 || loc < 200 || entry.getKey().contains("/test/") || entry.getValue() == 0) continue;
             ClassRecord classRecord = new ClassRecord();
             classRecord.setClassName(entry.getKey());
             classRecord.setCyclomaticComplexity(cc);
